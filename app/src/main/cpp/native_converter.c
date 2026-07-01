@@ -306,6 +306,14 @@ static int pump_decoder(JNIEnv *env, AVCodecContext *dec, AVCodecContext *enc,
                         int64_t *lastPts, jobject cb, jmethodID onProg) {
     int ret;
     while ((ret = avcodec_receive_frame(dec, frame)) >= 0) {
+        // Re-label deprecated full-range YUVJ formats as their plain equivalents.
+        // The byte layout is identical, so this is a metadata-only change that
+        // lets full-range data pass straight through to the (full-range-signaled)
+        // encoder instead of being range-compressed by swscale.
+        if (frame->format == AV_PIX_FMT_YUVJ420P) frame->format = AV_PIX_FMT_YUV420P;
+        else if (frame->format == AV_PIX_FMT_YUVJ422P) frame->format = AV_PIX_FMT_YUV422P;
+        else if (frame->format == AV_PIX_FMT_YUVJ444P) frame->format = AV_PIX_FMT_YUV444P;
+
         int64_t ts = frame->best_effort_timestamp != AV_NOPTS_VALUE
                      ? frame->best_effort_timestamp : frame->pts;
 
@@ -412,6 +420,19 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeTranscode
     enc->color_primaries = dec->color_primaries;
     enc->color_trc = dec->color_trc;
     enc->colorspace = dec->colorspace;
+
+    // Many H.264 phone recordings decode to the deprecated full-range YUVJ420P
+    // (== YUV420P + JPEG range). Encoding to YUV420P would make swscale squeeze
+    // the data into limited range while the copied metadata still says full
+    // range → washed-out colours. Signal full range explicitly and let
+    // pump_decoder re-label the frames as YUV420P so no range-shifting scale runs.
+    int fullRange = dec->color_range == AVCOL_RANGE_JPEG
+                    || dec->pix_fmt == AV_PIX_FMT_YUVJ420P
+                    || dec->pix_fmt == AV_PIX_FMT_YUVJ422P
+                    || dec->pix_fmt == AV_PIX_FMT_YUVJ444P;
+    if (fullRange) enc->color_range = AVCOL_RANGE_JPEG;
+    LOGI("transcode: color_range=%d(full=%d) primaries=%d trc=%d space=%d",
+         dec->color_range, fullRange, dec->color_primaries, dec->color_trc, dec->colorspace);
 
     AVRational fr = av_guess_frame_rate(ifmt, ist, NULL);
     if (fr.num <= 0 || fr.den <= 0) fr = (AVRational) {30, 1};
