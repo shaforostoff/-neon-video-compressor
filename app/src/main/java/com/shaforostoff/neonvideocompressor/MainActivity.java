@@ -35,6 +35,8 @@ import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String STATE_URIS = "selected_uris";
+
     private final ArrayList<Uri> selectedUris = new ArrayList<>();
 
     private TextView txtFile, txtCrf;
@@ -101,6 +103,22 @@ public class MainActivity extends AppCompatActivity {
         btnPreview.setOnClickListener(v -> onPreviewClicked());
         btnConvert.setOnClickListener(v -> onConvertClicked());
         ((MaterialButton) findViewById(R.id.btnAbout)).setOnClickListener(v -> showAboutDialog());
+
+        // Restore the selection across recreation (e.g. rotating the phone while
+        // the preview is open recreates this activity underneath it).
+        if (savedInstanceState != null) {
+            ArrayList<Uri> saved = savedInstanceState.getParcelableArrayList(STATE_URIS);
+            if (saved != null && !saved.isEmpty()) {
+                selectedUris.addAll(saved);
+                renderSelection();
+            }
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putParcelableArrayList(STATE_URIS, selectedUris);
     }
 
     private void showAboutDialog() {
@@ -145,11 +163,18 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {
             }
         }
+        renderSelection();
+    }
+
+    /** Updates the file label and button state to reflect {@link #selectedUris}. */
+    private void renderSelection() {
         if (selectedUris.size() == 1) {
             txtFile.setText(describe(selectedUris.get(0)));
-        } else {
+        } else if (!selectedUris.isEmpty()) {
             txtFile.setText(String.format(Locale.US,
                     getString(R.string.videos_selected), selectedUris.size()));
+        } else {
+            txtFile.setText(R.string.no_file_selected);
         }
         boolean any = !selectedUris.isEmpty();
         btnConvert.setEnabled(any);
