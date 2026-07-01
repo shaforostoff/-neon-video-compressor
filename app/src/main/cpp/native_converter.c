@@ -589,7 +589,15 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
     }
     if (!have_video && !have_audio) { LOGE("remux: no input streams"); goto end; }
 
-    if (avformat_alloc_output_context2(&ofmt, NULL, NULL, outPath) < 0 || !ofmt) goto end;
+    if (avformat_alloc_output_context2(&ofmt, NULL, NULL, outPath) < 0 || !ofmt) {
+        // This FFmpeg build has no ipod muxer, which owns the .m4a extension, so
+        // the filename guess fails for audio-only output. The mp4 muxer produces
+        // a compatible ISO-BMFF container, so force it explicitly.
+        if (avformat_alloc_output_context2(&ofmt, NULL, "mp4", outPath) < 0 || !ofmt) {
+            LOGE("remux: no output muxer for %s", outPath);
+            goto end;
+        }
+    }
 
     // Video output stream
     if (have_video) {
@@ -618,7 +626,11 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
 
     AVDictionary *opts = NULL;
     av_dict_set(&opts, "movflags", "+faststart", 0);
-    if (avformat_write_header(ofmt, &opts) < 0) { av_dict_free(&opts); goto end; }
+    if (avformat_write_header(ofmt, &opts) < 0) {
+        LOGE("remux: write_header failed (incompatible copied codec?)");
+        av_dict_free(&opts);
+        goto end;
+    }
     av_dict_free(&opts);
     header_written = 1;
 
