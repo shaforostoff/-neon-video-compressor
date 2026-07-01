@@ -5,8 +5,6 @@
     <string name="no_file_selected">No file selected</string>
     <string name="video_settings">Video</string>
     <string name="audio_settings">Audio</string>
-    <string name="video_mode">Video mode</string>
-    <string name="audio_mode">Audio mode</string>
     <string name="preset">Preset</string>
     <string name="audio_bitrate">Audio bitrate</string>
     <string name="crf_label">Quality (CRF): %1$d</string>

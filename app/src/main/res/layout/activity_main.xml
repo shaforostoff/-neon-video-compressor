@@ -32,16 +32,11 @@
             android:text="@string/video_settings"
             android:textAppearance="?attr/textAppearanceTitleMedium" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/video_mode" />
-
         <Spinner
             android:id="@+id/spVideoMode"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" />
 
         <LinearLayout
             android:id="@+id/videoEncodeOptions"
@@ -83,16 +78,11 @@
             android:text="@string/audio_settings"
             android:textAppearance="?attr/textAppearanceTitleMedium" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/audio_mode" />
-
         <Spinner
             android:id="@+id/spAudioMode"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" />
 
         <LinearLayout
             android:id="@+id/audioEncodeOptions"
