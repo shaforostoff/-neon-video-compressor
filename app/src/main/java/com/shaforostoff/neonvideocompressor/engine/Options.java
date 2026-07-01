@@ -9,13 +9,15 @@ public class Options implements Serializable {
 
     public enum VideoMode {
         ENCODE_HEVC,
-        COPY
+        COPY,
+        REMOVE
     }
 
     public enum AudioMode {
         ENCODE_AAC_LC,
         ENCODE_AAC_HE,
-        COPY
+        COPY,
+        REMOVE
     }
 
     public VideoMode videoMode = VideoMode.ENCODE_HEVC;
@@ -29,8 +31,26 @@ public class Options implements Serializable {
         return videoMode == VideoMode.ENCODE_HEVC;
     }
 
+    public boolean copiesVideo() {
+        return videoMode == VideoMode.COPY;
+    }
+
+    /** When true the output carries no video track (audio-only, .m4a). */
+    public boolean removesVideo() {
+        return videoMode == VideoMode.REMOVE;
+    }
+
     public boolean encodesAudio() {
         return audioMode == AudioMode.ENCODE_AAC_LC || audioMode == AudioMode.ENCODE_AAC_HE;
+    }
+
+    public boolean copiesAudio() {
+        return audioMode == AudioMode.COPY;
+    }
+
+    /** When true the output carries no audio track. */
+    public boolean removesAudio() {
+        return audioMode == AudioMode.REMOVE;
     }
 
     /** AAC profile constant for MediaCodec, valid only when {@link #encodesAudio()}. */

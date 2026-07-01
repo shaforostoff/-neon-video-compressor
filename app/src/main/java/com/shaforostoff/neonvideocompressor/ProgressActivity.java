@@ -107,10 +107,12 @@ public class ProgressActivity extends AppCompatActivity {
                 finishedState = true;
                 txtPhase.setText("Done");
                 txtTime.setText(s.message != null ? s.message : "");
-                txtSpeed.setText("Saved to Movies");
+                boolean audioOnly = s.message != null && s.message.endsWith(".m4a");
+                String savedTo = audioOnly ? "Saved to Music" : "Saved to Movies";
+                txtSpeed.setText(savedTo);
                 btnPauseResume.setEnabled(false);
                 btnCancel.setText("Close");
-                Toast.makeText(this, "Saved to Movies", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, savedTo, Toast.LENGTH_LONG).show();
                 break;
             case ERROR:
                 finishedState = true;

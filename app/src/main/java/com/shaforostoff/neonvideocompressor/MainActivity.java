@@ -12,6 +12,7 @@ import android.widget.ArrayAdapter;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -68,10 +69,12 @@ public class MainActivity extends AppCompatActivity {
         setupSpinner(spAudioMode, R.array.audio_modes, 0);
         setupSpinner(spAudioBitrate, R.array.audio_bitrate_labels, 2 /* 40 kbps */);
 
+        // Video encode options (CRF/preset) are relevant only for "Encode HEVC" (pos 0).
         spVideoMode.setOnItemSelectedListener(new SimpleSelected(pos ->
                 videoEncodeOptions.setVisibility(pos == 0 ? View.VISIBLE : View.GONE)));
+        // Audio encode options (bitrate) are relevant only for the encode modes (pos 0/1).
         spAudioMode.setOnItemSelectedListener(new SimpleSelected(pos ->
-                audioEncodeOptions.setVisibility(pos == 2 ? View.GONE : View.VISIBLE)));
+                audioEncodeOptions.setVisibility(pos <= 1 ? View.VISIBLE : View.GONE)));
 
         seekCrf.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -144,16 +147,25 @@ public class MainActivity extends AppCompatActivity {
     private void startConversion() {
         if (selectedUri == null) return;
         Options o = new Options();
-        o.videoMode = spVideoMode.getSelectedItemPosition() == 0
-                ? Options.VideoMode.ENCODE_HEVC : Options.VideoMode.COPY;
+        switch (spVideoMode.getSelectedItemPosition()) {
+            case 0: o.videoMode = Options.VideoMode.ENCODE_HEVC; break;
+            case 1: o.videoMode = Options.VideoMode.COPY; break;
+            default: o.videoMode = Options.VideoMode.REMOVE; break;
+        }
         o.crf = seekCrf.getProgress();
         o.preset = (String) spPreset.getSelectedItem();
         switch (spAudioMode.getSelectedItemPosition()) {
             case 0: o.audioMode = Options.AudioMode.ENCODE_AAC_LC; break;
             case 1: o.audioMode = Options.AudioMode.ENCODE_AAC_HE; break;
-            default: o.audioMode = Options.AudioMode.COPY; break;
+            case 2: o.audioMode = Options.AudioMode.COPY; break;
+            default: o.audioMode = Options.AudioMode.REMOVE; break;
         }
         o.audioBitrate = bitrateValues[spAudioBitrate.getSelectedItemPosition()];
+
+        if (o.removesVideo() && o.removesAudio()) {
+            Toast.makeText(this, "Can't remove both video and audio", Toast.LENGTH_LONG).show();
+            return;
+        }
 
         ConversionService.start(this, selectedUri, o);
         startActivity(new Intent(this, ProgressActivity.class));

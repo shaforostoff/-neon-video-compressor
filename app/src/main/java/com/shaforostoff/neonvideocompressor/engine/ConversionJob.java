@@ -58,7 +58,10 @@ public class ConversionJob {
         File cache = context.getCacheDir();
         File videoTemp = new File(cache, "video_tmp.mp4");
         File audioTemp = new File(cache, "audio_tmp.m4a");
-        File finalTemp = new File(cache, "out_tmp.mp4");
+        // Removing the video track yields an audio-only container (.m4a); the
+        // extension drives the muxer FFmpeg selects for the final file.
+        boolean audioOnly = options.removesVideo();
+        File finalTemp = new File(cache, audioOnly ? "out_tmp.m4a" : "out_tmp.mp4");
         deleteQuietly(videoTemp, audioTemp, finalTemp);
 
         ParcelFileDescriptor inputPfd = null;
@@ -83,8 +86,18 @@ public class ConversionJob {
             if (durationUs <= 0) durationUs = 1; // avoid div-by-zero in fractions
 
             boolean encodeVideo = options.encodesVideo();
+            boolean copyVideo = options.copiesVideo();
             boolean encodeAudio = options.encodesAudio() && hasAudio;
-            boolean copyAudio = options.audioMode == Options.AudioMode.COPY && hasAudio;
+            boolean copyAudio = options.copiesAudio() && hasAudio;
+
+            boolean outputVideo = encodeVideo || copyVideo;
+            boolean outputAudio = encodeAudio || copyAudio;
+            if (!outputVideo && !outputAudio) {
+                listener.onError(options.removesAudio()
+                        ? "Nothing to output: both tracks removed"
+                        : "Nothing to output: the source has no audio to keep");
+                return;
+            }
             computeWeights(encodeVideo, encodeAudio);
 
             // --- Video pass ---
@@ -126,9 +139,11 @@ public class ConversionJob {
             ParcelFileDescriptor audioPfd = null;
             int muxResult;
             try {
-                videoPfd = encodeVideo
-                        ? ParcelFileDescriptor.open(videoTemp, ParcelFileDescriptor.MODE_READ_ONLY)
-                        : context.getContentResolver().openFileDescriptor(inputUri, "r");
+                if (encodeVideo) {
+                    videoPfd = ParcelFileDescriptor.open(videoTemp, ParcelFileDescriptor.MODE_READ_ONLY);
+                } else if (copyVideo) {
+                    videoPfd = context.getContentResolver().openFileDescriptor(inputUri, "r");
+                } // else: video removed -> no video source
 
                 if (encodeAudio) {
                     audioPfd = ParcelFileDescriptor.open(audioTemp, ParcelFileDescriptor.MODE_READ_ONLY);
@@ -136,9 +151,10 @@ public class ConversionJob {
                     audioPfd = context.getContentResolver().openFileDescriptor(inputUri, "r");
                 }
 
+                int videoFd = videoPfd != null ? videoPfd.getFd() : -1;
                 int audioFd = audioPfd != null ? audioPfd.getFd() : -1;
                 muxResult = NativeConverter.nativeRemux(
-                        videoPfd.getFd(), audioFd, finalTemp.getAbsolutePath(), encodeVideo);
+                        videoFd, audioFd, finalTemp.getAbsolutePath(), encodeVideo);
             } finally {
                 closeQuietly(videoPfd);
                 closeQuietly(audioPfd);
@@ -155,8 +171,8 @@ public class ConversionJob {
 
             // --- Publish ---
             setPhase(Phase.PUBLISHING);
-            String displayName = buildOutputName();
-            Uri out = MediaStoreOutput.publish(context, finalTemp, displayName);
+            String displayName = buildOutputName(audioOnly);
+            Uri out = MediaStoreOutput.publish(context, finalTemp, displayName, audioOnly);
             listener.onCompleted(out, displayName);
 
         } catch (Exception e) {
@@ -237,12 +253,12 @@ public class ConversionJob {
         listener.onProgress(phase, processedUs, durationUs, speed, overall);
     }
 
-    private String buildOutputName() {
+    private String buildOutputName(boolean audioOnly) {
         String base = queryDisplayName();
         if (base == null) base = "video_" + System.currentTimeMillis();
         int dot = base.lastIndexOf('.');
         if (dot > 0) base = base.substring(0, dot);
-        return base + "_hevc.mp4";
+        return audioOnly ? base + "_audio.m4a" : base + "_hevc.mp4";
     }
 
     private String queryDisplayName() {

@@ -2,12 +2,14 @@
     <string-array name="video_modes">
         <item>Encode HEVC (H.265)</item>
         <item>Copy (no re-encode)</item>
+        <item>Remove</item>
     </string-array>
 
     <string-array name="audio_modes">
         <item>Encode AAC-LC</item>
         <item>Encode HE-AAC</item>
         <item>Copy (no re-encode)</item>
+        <item>Remove</item>
     </string-array>
 
     <string-array name="presets">

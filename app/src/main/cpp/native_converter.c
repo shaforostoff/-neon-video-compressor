@@ -6,7 +6,9 @@
 //  * nativeTranscodeVideo: decode source video -> encode HEVC (libx265) into a
 //    video-only temp .mp4 with the hvc1 tag. Reports progress; honours pause/cancel.
 //  * nativeRemux: stream-copy a chosen video source + audio source into the final
-//    .mp4 with +faststart (and hvc1 when the video was encoded by us).
+//    .mp4 with +faststart (and hvc1 when the video was encoded by us). Either
+//    source may be absent (fd -1); a missing video source yields an audio-only
+//    .m4a.
 //  * nativeProbe: duration / audio presence / dimensions / rotation.
 //
 // Inputs are passed as raw file descriptors and read through a custom AVIO
@@ -569,30 +571,37 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
     const char *outPath = (*env)->GetStringUTFChars(env, joutPath, NULL);
     int ret = RET_ERROR;
     int header_written = 0;
+    int have_video = (videoFd >= 0);
     int have_audio = (audioFd >= 0);
 
     CopySource v = {0}, a = {0};
     AVFormatContext *ofmt = NULL;
 
-    if (src_open(&v, videoFd, AVMEDIA_TYPE_VIDEO) < 0) { LOGE("remux: video open failed"); goto end; }
+    if (have_video && src_open(&v, videoFd, AVMEDIA_TYPE_VIDEO) < 0) {
+        LOGE("remux: video open failed");
+        goto end;
+    }
     if (have_audio && src_open(&a, audioFd, AVMEDIA_TYPE_AUDIO) < 0) {
         // No usable audio: continue video-only.
         src_close(&a);
         memset(&a, 0, sizeof(a));
         have_audio = 0;
     }
+    if (!have_video && !have_audio) { LOGE("remux: no input streams"); goto end; }
 
     if (avformat_alloc_output_context2(&ofmt, NULL, NULL, outPath) < 0 || !ofmt) goto end;
 
     // Video output stream
-    v.out = avformat_new_stream(ofmt, NULL);
-    if (!v.out) goto end;
-    avcodec_parameters_copy(v.out->codecpar, v.fmt->streams[v.stream_index]->codecpar);
-    v.out->codecpar->codec_tag = videoWasEncoded
-            ? MKTAG('h', 'v', 'c', '1')
-            : 0; // 0 -> let muxer choose a valid tag for the copied codec
-    v.out->time_base = v.fmt->streams[v.stream_index]->time_base;
-    copy_display_matrix(v.fmt->streams[v.stream_index], v.out);
+    if (have_video) {
+        v.out = avformat_new_stream(ofmt, NULL);
+        if (!v.out) goto end;
+        avcodec_parameters_copy(v.out->codecpar, v.fmt->streams[v.stream_index]->codecpar);
+        v.out->codecpar->codec_tag = videoWasEncoded
+                ? MKTAG('h', 'v', 'c', '1')
+                : 0; // 0 -> let muxer choose a valid tag for the copied codec
+        v.out->time_base = v.fmt->streams[v.stream_index]->time_base;
+        copy_display_matrix(v.fmt->streams[v.stream_index], v.out);
+    }
 
     // Audio output stream
     if (have_audio) {
@@ -614,15 +623,15 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
     header_written = 1;
 
     // Prime both sources, then merge by DTS.
-    src_next(&v);
+    if (have_video) src_next(&v);
     if (have_audio) src_next(&a);
 
-    while (v.has_pending || (have_audio && a.has_pending)) {
+    while ((have_video && v.has_pending) || (have_audio && a.has_pending)) {
         int write_video;
-        if (!have_audio || !a.has_pending) {
-            write_video = 1;
-        } else if (!v.has_pending) {
+        if (!have_video || !v.has_pending) {
             write_video = 0;
+        } else if (!have_audio || !a.has_pending) {
+            write_video = 1;
         } else {
             write_video = src_dts_us(&v) <= src_dts_us(&a);
         }
@@ -641,14 +650,12 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
 
 end:
     if (ofmt) {
-        if (header_written == 0 && ofmt->pb && !(ofmt->oformat->flags & AVFMT_NOFILE)) {
-            avio_closep(&ofmt->pb);
-        } else if (ofmt->pb && !(ofmt->oformat->flags & AVFMT_NOFILE)) {
+        if (ofmt->pb && !(ofmt->oformat->flags & AVFMT_NOFILE)) {
             avio_closep(&ofmt->pb);
         }
         avformat_free_context(ofmt);
     }
-    src_close(&v);
+    if (have_video) src_close(&v);
     if (have_audio) src_close(&a);
     (*env)->ReleaseStringUTFChars(env, joutPath, outPath);
     return ret;

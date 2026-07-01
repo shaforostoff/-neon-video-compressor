@@ -48,8 +48,10 @@ public final class NativeConverter {
 
     /**
      * Stream-copy the first video stream of {@code videoFd} and the first audio
-     * stream of {@code audioFd} (pass -1 for none) into {@code outPath} with
-     * {@code +faststart}. Forces the {@code hvc1} tag when {@code videoWasEncoded}.
+     * stream of {@code audioFd} into {@code outPath} with {@code +faststart}.
+     * Pass -1 for either fd to omit that track; passing -1 for {@code videoFd}
+     * produces an audio-only file (use an {@code .m4a} {@code outPath}). Forces
+     * the {@code hvc1} tag when {@code videoWasEncoded}.
      */
     public static native int nativeRemux(int videoFd, int audioFd, String outPath,
                                          boolean videoWasEncoded);
