@@ -7,7 +7,8 @@
 
     <string-array name="audio_modes">
         <item>Encode AAC-LC</item>
-        <item>Encode HE-AAC</item>
+        <item>Encode HE-AAC v1</item>
+        <item>Encode HE-AAC v2</item>
         <item>Copy (no re-encode)</item>
         <item>Remove</item>
     </string-array>

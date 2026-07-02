@@ -16,6 +16,7 @@ public class Options implements Serializable {
     public enum AudioMode {
         ENCODE_AAC_LC,
         ENCODE_AAC_HE,
+        ENCODE_AAC_HE_V2,
         COPY,
         REMOVE
     }
@@ -41,7 +42,9 @@ public class Options implements Serializable {
     }
 
     public boolean encodesAudio() {
-        return audioMode == AudioMode.ENCODE_AAC_LC || audioMode == AudioMode.ENCODE_AAC_HE;
+        return audioMode == AudioMode.ENCODE_AAC_LC
+                || audioMode == AudioMode.ENCODE_AAC_HE
+                || audioMode == AudioMode.ENCODE_AAC_HE_V2;
     }
 
     public boolean copiesAudio() {
@@ -55,8 +58,13 @@ public class Options implements Serializable {
 
     /** AAC profile constant for MediaCodec, valid only when {@link #encodesAudio()}. */
     public int aacProfile() {
-        return audioMode == AudioMode.ENCODE_AAC_HE
-                ? MediaCodecInfo.CodecProfileLevel.AACObjectHE
-                : MediaCodecInfo.CodecProfileLevel.AACObjectLC;
+        switch (audioMode) {
+            case ENCODE_AAC_HE:
+                return MediaCodecInfo.CodecProfileLevel.AACObjectHE;
+            case ENCODE_AAC_HE_V2:
+                return MediaCodecInfo.CodecProfileLevel.AACObjectHE_PS;
+            default:
+                return MediaCodecInfo.CodecProfileLevel.AACObjectLC;
+        }
     }
 }

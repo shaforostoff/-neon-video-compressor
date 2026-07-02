@@ -97,15 +97,15 @@ public class MainActivity extends AppCompatActivity {
         // Video encode options (CRF/preset) are relevant only for "Encode HEVC" (pos 0).
         spVideoMode.setOnItemSelectedListener(new SimpleSelected(pos ->
                 videoEncodeOptions.setVisibility(pos == 0 ? View.VISIBLE : View.GONE)));
-        // Audio encode options (bitrate) are relevant only for the encode modes (pos 0/1).
+        // Audio encode options (bitrate) are relevant only for the encode modes (pos 0/1/2).
         spAudioMode.setOnItemSelectedListener(new SimpleSelected(pos ->
-                audioEncodeOptions.setVisibility(pos <= 1 ? View.VISIBLE : View.GONE)));
+                audioEncodeOptions.setVisibility(pos <= 2 ? View.VISIBLE : View.GONE)));
         // Apply the restored selections' visibility immediately (a listener added
         // after setSelection doesn't get called for the already-set value).
         videoEncodeOptions.setVisibility(
                 spVideoMode.getSelectedItemPosition() == 0 ? View.VISIBLE : View.GONE);
         audioEncodeOptions.setVisibility(
-                spAudioMode.getSelectedItemPosition() <= 1 ? View.VISIBLE : View.GONE);
+                spAudioMode.getSelectedItemPosition() <= 2 ? View.VISIBLE : View.GONE);
 
         seekCrf.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -269,7 +269,8 @@ public class MainActivity extends AppCompatActivity {
         switch (spAudioMode.getSelectedItemPosition()) {
             case 0: o.audioMode = Options.AudioMode.ENCODE_AAC_LC; break;
             case 1: o.audioMode = Options.AudioMode.ENCODE_AAC_HE; break;
-            case 2: o.audioMode = Options.AudioMode.COPY; break;
+            case 2: o.audioMode = Options.AudioMode.ENCODE_AAC_HE_V2; break;
+            case 3: o.audioMode = Options.AudioMode.COPY; break;
             default: o.audioMode = Options.AudioMode.REMOVE; break;
         }
         o.audioBitrate = bitrateValues[spAudioBitrate.getSelectedItemPosition()];
