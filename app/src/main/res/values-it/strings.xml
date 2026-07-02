@@ -47,6 +47,7 @@
     <string name="cancelled_label">Annullato</string>
     <string name="speed_format">Velocità: %1$.2f× tempo reale</string>
     <string name="speed_unknown">Velocità: —</string>
+    <string name="avg_speed_format">Velocità media: %1$.2f× tempo reale</string>
     <string name="ram_format">RAM: %1$d MB</string>
     <string name="ram_unknown">RAM: —</string>
     <string name="no_app_to_open">Nessuna app per aprire questo file</string>

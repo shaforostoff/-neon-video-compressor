@@ -47,6 +47,7 @@
     <string name="cancelled_label">Отменено</string>
     <string name="speed_format">Скорость: %1$.2f× от реального времени</string>
     <string name="speed_unknown">Скорость: —</string>
+    <string name="avg_speed_format">Средняя скорость: %1$.2f× от реального времени</string>
     <string name="ram_format">ОЗУ: %1$d МБ</string>
     <string name="ram_unknown">ОЗУ: —</string>
     <string name="no_app_to_open">Нет приложения для открытия этого файла</string>

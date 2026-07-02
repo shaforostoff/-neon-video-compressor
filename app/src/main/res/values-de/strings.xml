@@ -47,6 +47,7 @@
     <string name="cancelled_label">Abgebrochen</string>
     <string name="speed_format">Geschwindigkeit: %1$.2f× Echtzeit</string>
     <string name="speed_unknown">Geschwindigkeit: —</string>
+    <string name="avg_speed_format">Durchschnittsgeschwindigkeit: %1$.2f× Echtzeit</string>
     <string name="ram_format">RAM: %1$d MB</string>
     <string name="ram_unknown">RAM: —</string>
     <string name="no_app_to_open">Keine App zum Öffnen dieser Datei</string>
