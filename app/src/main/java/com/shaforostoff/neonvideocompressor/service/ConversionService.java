@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Binder;
@@ -18,6 +19,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.OpenableColumns;
+import android.text.format.Formatter;
 
 import androidx.core.app.NotificationCompat;
 
@@ -60,6 +62,8 @@ public class ConversionService extends Service implements ConversionJob.Listener
         public long durationUs;
         public double speed;
         public float overall;          // fraction of the current file [0,1]
+        public long liveProcessedBytes; // estimated source bytes consumed so far (current file)
+        public long liveOutputBytes;    // bytes written to the output so far (current file)
         public String message;
         public Uri output;
 
@@ -98,6 +102,9 @@ public class ConversionService extends Service implements ConversionJob.Listener
     private Uri lastOutput;
     private String lastDisplayName;
     private String lastError;
+    private long totalBytes;        // size of produced outputs
+    private long originalBytes;     // size of the sources that succeeded
+    private long currentInputBytes; // size of the source currently being processed
     private final ArrayList<Uri> collectedOutputs = new ArrayList<>();
 
     public class LocalBinder extends Binder {
@@ -169,15 +176,18 @@ public class ConversionService extends Service implements ConversionJob.Listener
             snapshot.batchIndex = i;
             snapshot.overall = 0f;
             snapshot.speed = 0;
+            snapshot.liveProcessedBytes = 0;
+            snapshot.liveOutputBytes = 0;
             snapshot.currentName = queryName(input);
             snapshot.status = Status.RUNNING;
+            currentInputBytes = queryUriSize(input);
             pushUpdate(true);
 
             JobControl c = new JobControl();
             synchronized (controlLock) {
                 control = c;
             }
-            ConversionJob job = new ConversionJob(this, input, options, c, this);
+            ConversionJob job = new ConversionJob(this, input, currentInputBytes, options, c, this);
             try {
                 job.run();
             } catch (Throwable t) {
@@ -197,7 +207,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
 
     @Override
     public void onProgress(ConversionJob.Phase phase, long processedUs, long durationUs,
-                           double speed, float overall) {
+                           double speed, float overall, long processedBytes, long outputBytes) {
         boolean paused;
         synchronized (controlLock) {
             paused = control != null && control.paused;
@@ -208,6 +218,8 @@ public class ConversionService extends Service implements ConversionJob.Listener
         snapshot.durationUs = durationUs;
         snapshot.speed = speed;
         snapshot.overall = overall;
+        snapshot.liveProcessedBytes = processedBytes;
+        snapshot.liveOutputBytes = outputBytes;
         pushUpdate(false);
     }
 
@@ -217,7 +229,11 @@ public class ConversionService extends Service implements ConversionJob.Listener
         snapshot.overall = 1f;
         lastOutput = output;
         lastDisplayName = displayName;
-        if (output != null) collectedOutputs.add(output); // worker thread only
+        if (output != null) {
+            collectedOutputs.add(output); // worker thread only
+            totalBytes += queryUriSize(output);
+            originalBytes += currentInputBytes;
+        }
         pushUpdate(true);
     }
 
@@ -242,16 +258,22 @@ public class ConversionService extends Service implements ConversionJob.Listener
         int ok = snapshot.succeeded;
         int bad = snapshot.failed;
 
+        // Size change across the successful file(s), e.g. " · 500 MB -> 145 MB".
+        String size = totalBytes > 0
+                ? " · " + Formatter.formatShortFileSize(this, originalBytes)
+                        + " -> " + Formatter.formatShortFileSize(this, totalBytes)
+                : "";
+
         Status finalStatus;
         String summary;
         if (batchCancelled) {
             finalStatus = Status.CANCELLED;
-            summary = "Cancelled — " + ok + " of " + total + " done";
+            summary = "Cancelled — " + ok + " of " + total + " done" + size;
         } else if (bad == 0) {
             finalStatus = Status.DONE;
-            summary = total == 1
+            summary = (total == 1
                     ? "Saved " + lastDisplayName
-                    : "Converted " + ok + " videos";
+                    : "Converted " + ok + " videos") + size;
         } else if (ok == 0) {
             finalStatus = Status.ERROR;
             String reason = lastError != null ? ": " + lastError : "";
@@ -260,7 +282,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
                     : "All " + bad + " conversions failed" + reason;
         } else {
             finalStatus = Status.DONE; // partial success
-            summary = "Converted " + ok + " of " + total + " (" + bad + " failed)";
+            summary = "Converted " + ok + " of " + total + " (" + bad + " failed)" + size;
         }
 
         snapshot.status = finalStatus;
@@ -456,6 +478,25 @@ public class ConversionService extends Service implements ConversionJob.Listener
         } else {
             startForeground(NOTIF_ID, n);
         }
+    }
+
+    private long queryUriSize(Uri uri) {
+        try (Cursor c = getContentResolver().query(
+                uri, new String[]{OpenableColumns.SIZE}, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                int idx = c.getColumnIndex(OpenableColumns.SIZE);
+                if (idx >= 0 && !c.isNull(idx)) return c.getLong(idx);
+            }
+        } catch (Exception ignored) {
+        }
+        try (AssetFileDescriptor afd = getContentResolver().openAssetFileDescriptor(uri, "r")) {
+            if (afd != null) {
+                long len = afd.getLength();
+                if (len >= 0) return len;
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
     }
 
     private String queryName(Uri uri) {

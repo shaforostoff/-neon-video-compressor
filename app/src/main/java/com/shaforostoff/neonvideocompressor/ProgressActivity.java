@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.format.Formatter;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -26,7 +27,7 @@ import java.util.Locale;
 
 public class ProgressActivity extends AppCompatActivity {
 
-    private TextView txtBatch, txtPhase, txtPercent, txtTime, txtSpeed, txtRam;
+    private TextView txtBatch, txtPhase, txtPercent, txtTime, txtSpeed, txtSize, txtRam;
     private ProgressBar progressBar;
     private MaterialButton btnPauseResume, btnCancel, btnOpen, btnShare;
     private View rowResultActions;
@@ -87,6 +88,7 @@ public class ProgressActivity extends AppCompatActivity {
         txtPercent = findViewById(R.id.txtPercent);
         txtTime = findViewById(R.id.txtTime);
         txtSpeed = findViewById(R.id.txtSpeed);
+        txtSize = findViewById(R.id.txtSize);
         txtRam = findViewById(R.id.txtRam);
         progressBar = findViewById(R.id.progressBar);
         btnPauseResume = findViewById(R.id.btnPauseResume);
@@ -185,6 +187,13 @@ public class ProgressActivity extends AppCompatActivity {
                 txtSpeed.setText(s.speed > 0
                         ? String.format(Locale.US, "Speed: %.2f× realtime", s.speed)
                         : "Speed: —");
+                if (s.liveProcessedBytes > 0 || s.liveOutputBytes > 0) {
+                    txtSize.setVisibility(View.VISIBLE);
+                    txtSize.setText(Formatter.formatShortFileSize(this, s.liveProcessedBytes)
+                            + " -> " + Formatter.formatShortFileSize(this, s.liveOutputBytes));
+                } else {
+                    txtSize.setVisibility(View.GONE);
+                }
                 btnPauseResume.setText(paused ? R.string.resume : R.string.pause);
                 btnPauseResume.setEnabled(true);
                 rowResultActions.setVisibility(View.GONE);
@@ -202,6 +211,7 @@ public class ProgressActivity extends AppCompatActivity {
                 txtTime.setText(s.message != null ? s.message : "");
                 String savedTo = s.audioOnly ? "Saved to Music" : "Saved to Movies";
                 txtSpeed.setText(savedTo);
+                txtSize.setVisibility(View.GONE);
                 stopRamTicker();
                 txtRam.setText("");
                 btnPauseResume.setEnabled(false);
@@ -221,6 +231,7 @@ public class ProgressActivity extends AppCompatActivity {
                 txtPhase.setText("Error");
                 txtTime.setText(s.message != null ? s.message : "Unknown error");
                 txtSpeed.setText("");
+                txtSize.setVisibility(View.GONE);
                 stopRamTicker();
                 txtRam.setText("");
                 btnPauseResume.setEnabled(false);
@@ -232,6 +243,7 @@ public class ProgressActivity extends AppCompatActivity {
                 txtBatch.setVisibility(View.GONE);
                 txtPhase.setText("Cancelled");
                 txtTime.setText(s.message != null ? s.message : "");
+                txtSize.setVisibility(View.GONE);
                 stopRamTicker();
                 txtRam.setText("");
                 btnPauseResume.setEnabled(false);

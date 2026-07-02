@@ -19,7 +19,15 @@ public class ConversionJob {
     public enum Phase {PROBING, VIDEO, AUDIO, MUXING, PUBLISHING}
 
     public interface Listener {
-        void onProgress(Phase phase, long processedUs, long durationUs, double speed, float overall);
+        /**
+         * @param processedBytes estimated bytes of the source consumed so far
+         *                       (source size scaled by {@code overall}; 0 if the
+         *                       source size is unknown)
+         * @param outputBytes    bytes written to the output so far (read straight
+         *                       off the growing temp file on disk)
+         */
+        void onProgress(Phase phase, long processedUs, long durationUs, double speed,
+                        float overall, long processedBytes, long outputBytes);
 
         void onCompleted(Uri output, String displayName);
 
@@ -30,6 +38,7 @@ public class ConversionJob {
 
     private final Context context;
     private final Uri inputUri;
+    private final long sourceSizeBytes;
     private final Options options;
     private final JobControl control;
     private final Listener listener;
@@ -45,10 +54,17 @@ public class ConversionJob {
     private long lastProcessedUs = 0;
     private double speed = 0;
 
-    public ConversionJob(Context context, Uri inputUri, Options options,
+    // Temp output files, used both to build the final result and to read a live
+    // "bytes written so far" size for progress display.
+    private File videoTemp;
+    private File audioTemp;
+    private File finalTemp;
+
+    public ConversionJob(Context context, Uri inputUri, long sourceSizeBytes, Options options,
                          JobControl control, Listener listener) {
         this.context = context.getApplicationContext();
         this.inputUri = inputUri;
+        this.sourceSizeBytes = sourceSizeBytes;
         this.options = options;
         this.control = control;
         this.listener = listener;
@@ -56,12 +72,12 @@ public class ConversionJob {
 
     public void run() {
         File cache = context.getCacheDir();
-        File videoTemp = new File(cache, "video_tmp.mp4");
-        File audioTemp = new File(cache, "audio_tmp.m4a");
+        videoTemp = new File(cache, "video_tmp.mp4");
+        audioTemp = new File(cache, "audio_tmp.m4a");
         // Removing the video track yields an audio-only container (.m4a); the
         // extension drives the muxer FFmpeg selects for the final file.
         boolean audioOnly = options.removesVideo();
-        File finalTemp = new File(cache, audioOnly ? "out_tmp.m4a" : "out_tmp.mp4");
+        finalTemp = new File(cache, audioOnly ? "out_tmp.m4a" : "out_tmp.mp4");
         deleteQuietly(videoTemp, audioTemp, finalTemp);
 
         ParcelFileDescriptor inputPfd = null;
@@ -229,7 +245,8 @@ public class ConversionJob {
             default:
                 base = 0f;
         }
-        listener.onProgress(phase, 0, durationUs, 0, base);
+        listener.onProgress(phase, 0, durationUs, 0, base,
+                estimatedProcessedBytes(base), currentOutputBytes(phase));
     }
 
     private void report(Phase phase, long processedUs) {
@@ -250,7 +267,37 @@ public class ConversionJob {
         float base = phase == Phase.AUDIO ? wVideo : 0f;
         float weight = phase == Phase.AUDIO ? wAudio : wVideo;
         float overall = base + weight * frac;
-        listener.onProgress(phase, processedUs, durationUs, speed, overall);
+        listener.onProgress(phase, processedUs, durationUs, speed, overall,
+                estimatedProcessedBytes(overall), currentOutputBytes(phase));
+    }
+
+    /**
+     * Rough estimate of how much of the source has been consumed, derived from
+     * overall job progress (assumes a roughly constant source bitrate — good
+     * enough for a live "N MB -> M MB" indicator, not exact byte accounting).
+     */
+    private long estimatedProcessedBytes(float overallFrac) {
+        if (sourceSizeBytes <= 0) return 0;
+        return Math.round(sourceSizeBytes * (double) Math.max(0f, Math.min(1f, overallFrac)));
+    }
+
+    /** Bytes actually written to disk so far for the given phase's output. */
+    private long currentOutputBytes(Phase phase) {
+        switch (phase) {
+            case VIDEO:
+                return lengthOf(videoTemp);
+            case AUDIO:
+                return lengthOf(videoTemp) + lengthOf(audioTemp);
+            case MUXING:
+            case PUBLISHING:
+                return lengthOf(finalTemp);
+            default:
+                return 0;
+        }
+    }
+
+    private static long lengthOf(File f) {
+        return f != null && f.exists() ? f.length() : 0;
     }
 
     private String buildOutputName(boolean audioOnly) {

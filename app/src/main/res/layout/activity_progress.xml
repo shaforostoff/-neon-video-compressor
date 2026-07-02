@@ -54,6 +54,13 @@
         android:text="Speed: —" />
 
     <TextView
+        android:id="@+id/txtSize"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/txtRam"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
