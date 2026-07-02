@@ -7,6 +7,8 @@ import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.provider.OpenableColumns;
 
+import com.shaforostoff.neonvideocompressor.R;
+
 import java.io.File;
 import java.io.IOException;
 
@@ -83,7 +85,7 @@ public class ConversionJob {
         try {
             inputPfd = context.getContentResolver().openFileDescriptor(inputUri, "r");
             if (inputPfd == null) {
-                listener.onError("Cannot open the selected video");
+                listener.onError(context.getString(R.string.error_open_input));
                 return;
             }
             int inputFd = inputPfd.getFd();
@@ -95,7 +97,7 @@ public class ConversionJob {
             boolean hasAudio = probe[1] == 1;
             boolean hasVideo = probe[5] == 1;
             if (!hasVideo) {
-                listener.onError("No video track found in the input");
+                listener.onError(context.getString(R.string.error_no_video_track));
                 return;
             }
             if (durationUs <= 0) durationUs = 1; // avoid div-by-zero in fractions
@@ -108,9 +110,9 @@ public class ConversionJob {
             boolean outputVideo = encodeVideo || copyVideo;
             boolean outputAudio = encodeAudio || copyAudio;
             if (!outputVideo && !outputAudio) {
-                listener.onError(options.removesAudio()
-                        ? "Nothing to output: both tracks removed"
-                        : "Nothing to output: the source has no audio to keep");
+                listener.onError(context.getString(options.removesAudio()
+                        ? R.string.error_nothing_both_removed
+                        : R.string.error_nothing_no_audio));
                 return;
             }
             computeWeights(encodeVideo, encodeAudio);
@@ -127,7 +129,7 @@ public class ConversionJob {
                     return;
                 }
                 if (r != NativeConverter.RET_OK) {
-                    listener.onError("Video encoding failed (code " + r + ")");
+                    listener.onError(context.getString(R.string.error_video_encode_failed, r));
                     return;
                 }
             }
@@ -172,14 +174,14 @@ public class ConversionJob {
                 }
 
                 outPfd = context.getContentResolver().openFileDescriptor(item, "rw");
-                if (outPfd == null) throw new IOException("Cannot open output for writing");
+                if (outPfd == null) throw new IOException(context.getString(R.string.error_open_output));
 
                 int videoFd = videoPfd != null ? videoPfd.getFd() : -1;
                 int audioFd = audioPfd != null ? audioPfd.getFd() : -1;
                 int muxResult = NativeConverter.nativeRemux(
                         videoFd, audioFd, outPfd.getFd(), encodeVideo);
                 if (muxResult != NativeConverter.RET_OK) {
-                    listener.onError("Muxing failed (code " + muxResult + ")");
+                    listener.onError(context.getString(R.string.error_muxing_failed, muxResult));
                     return; // finally deletes the still-pending item
                 }
                 if (control.cancelled) {

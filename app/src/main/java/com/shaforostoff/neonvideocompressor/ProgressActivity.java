@@ -114,7 +114,7 @@ public class ProgressActivity extends AppCompatActivity {
             try {
                 startActivity(OutputActions.view(resultOutputs.get(0), resultAudioOnly));
             } catch (ActivityNotFoundException e) {
-                Toast.makeText(this, "No app to open this file", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.no_app_to_open, Toast.LENGTH_SHORT).show();
             }
         });
         btnShare.setOnClickListener(v -> {
@@ -133,7 +133,7 @@ public class ProgressActivity extends AppCompatActivity {
             finishedState = savedInstanceState.getBoolean(STATE_FINISHED);
             if (finishedState) {
                 btnPauseResume.setEnabled(false);
-                btnCancel.setText("Close");
+                btnCancel.setText(R.string.close);
                 rowResultActions.setVisibility(resultOutputs.isEmpty() ? View.GONE : View.VISIBLE);
             }
         }
@@ -177,16 +177,18 @@ public class ProgressActivity extends AppCompatActivity {
                 if (batch) {
                     String name = s.currentName != null ? ": " + s.currentName : "";
                     txtBatch.setVisibility(View.VISIBLE);
-                    txtBatch.setText(String.format(Locale.US, "File %d of %d%s",
-                            s.batchIndex + 1, s.batchTotal, name));
+                    txtBatch.setText(getString(R.string.batch_file_format,
+                            s.batchIndex + 1, s.batchTotal) + name);
                 } else {
                     txtBatch.setVisibility(View.GONE);
                 }
-                txtPhase.setText(phaseLabel(s) + (paused ? " (paused)" : ""));
+                txtPhase.setText(paused
+                        ? getString(R.string.phase_paused_format, phaseLabel(s))
+                        : phaseLabel(s));
                 txtTime.setText(formatTime(s.processedUs) + " / " + formatTime(s.durationUs));
                 txtSpeed.setText(s.speed > 0
-                        ? String.format(Locale.US, "Speed: %.2f× realtime", s.speed)
-                        : "Speed: —");
+                        ? getString(R.string.speed_format, s.speed)
+                        : getString(R.string.speed_unknown));
                 if (s.liveProcessedBytes > 0 || s.liveOutputBytes > 0) {
                     txtSize.setVisibility(View.VISIBLE);
                     txtSize.setText(Formatter.formatShortFileSize(this, s.liveProcessedBytes)
@@ -207,15 +209,15 @@ public class ProgressActivity extends AppCompatActivity {
             case DONE:
                 finishedState = true;
                 txtBatch.setVisibility(View.GONE);
-                txtPhase.setText(batch ? "Batch complete" : "Done");
+                txtPhase.setText(batch ? R.string.batch_complete : R.string.done);
                 txtTime.setText(s.message != null ? s.message : "");
-                String savedTo = s.audioOnly ? "Saved to Music" : "Saved to Movies";
+                String savedTo = getString(s.audioOnly ? R.string.saved_to_music : R.string.saved_to_movies);
                 txtSpeed.setText(savedTo);
                 txtSize.setVisibility(View.GONE);
                 stopRamTicker();
                 txtRam.setText("");
                 btnPauseResume.setEnabled(false);
-                btnCancel.setText("Close");
+                btnCancel.setText(R.string.close);
                 // Cache outputs (defensive copy off the shared Snapshot) and offer
                 // Open/Share — covers full and partial success.
                 resultOutputs.clear();
@@ -228,26 +230,26 @@ public class ProgressActivity extends AppCompatActivity {
             case ERROR:
                 finishedState = true;
                 txtBatch.setVisibility(View.GONE);
-                txtPhase.setText("Error");
-                txtTime.setText(s.message != null ? s.message : "Unknown error");
+                txtPhase.setText(R.string.error_label);
+                txtTime.setText(s.message != null ? s.message : getString(R.string.unknown_error));
                 txtSpeed.setText("");
                 txtSize.setVisibility(View.GONE);
                 stopRamTicker();
                 txtRam.setText("");
                 btnPauseResume.setEnabled(false);
-                btnCancel.setText("Close");
+                btnCancel.setText(R.string.close);
                 rowResultActions.setVisibility(View.GONE);
                 break;
             case CANCELLED:
                 finishedState = true;
                 txtBatch.setVisibility(View.GONE);
-                txtPhase.setText("Cancelled");
+                txtPhase.setText(R.string.cancelled_label);
                 txtTime.setText(s.message != null ? s.message : "");
                 txtSize.setVisibility(View.GONE);
                 stopRamTicker();
                 txtRam.setText("");
                 btnPauseResume.setEnabled(false);
-                btnCancel.setText("Close");
+                btnCancel.setText(R.string.close);
                 rowResultActions.setVisibility(View.GONE);
                 break;
             default:
@@ -267,7 +269,7 @@ public class ProgressActivity extends AppCompatActivity {
     private void sampleRamNow() {
         lastRamSampleMs = SystemClock.uptimeMillis();
         long pssKb = Debug.getPss(); // total PSS of this process, in KB
-        txtRam.setText(String.format(Locale.US, "RAM: %d MB", (pssKb + 512) / 1024));
+        txtRam.setText(getString(R.string.ram_format, (pssKb + 512) / 1024));
     }
 
     private void startRamTicker() {
@@ -281,11 +283,11 @@ public class ProgressActivity extends AppCompatActivity {
 
     private String phaseLabel(ConversionService.Snapshot s) {
         switch (s.phase) {
-            case VIDEO: return "Encoding video";
-            case AUDIO: return "Encoding audio";
-            case MUXING: return "Finalizing";
-            case PUBLISHING: return "Saving";
-            default: return "Preparing";
+            case VIDEO: return getString(R.string.phase_video);
+            case AUDIO: return getString(R.string.phase_audio);
+            case MUXING: return getString(R.string.phase_mux);
+            case PUBLISHING: return getString(R.string.phase_publish);
+            default: return getString(R.string.preparing);
         }
     }
 

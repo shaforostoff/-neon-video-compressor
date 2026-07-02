@@ -29,4 +29,51 @@
 
     <string name="about">About</string>
     <string name="about_title">About Neon Video Compressor</string>
+
+    <string name="close">Close</string>
+    <string name="preparing">Preparing…</string>
+    <string name="phase_video">Encoding video</string>
+    <string name="phase_audio">Encoding audio</string>
+    <string name="phase_mux">Finalizing</string>
+    <string name="phase_publish">Saving</string>
+    <string name="phase_paused_format">%1$s (paused)</string>
+    <string name="batch_file_format">File %1$d of %2$d</string>
+    <string name="batch_complete">Batch complete</string>
+    <string name="saved_to_music">Saved to Music</string>
+    <string name="saved_to_movies">Saved to Movies</string>
+    <string name="error_label">Error</string>
+    <string name="unknown_error">Unknown error</string>
+    <string name="cancelled_label">Cancelled</string>
+    <string name="speed_format">Speed: %1$.2f× realtime</string>
+    <string name="speed_unknown">Speed: —</string>
+    <string name="ram_format">RAM: %1$d MB</string>
+    <string name="ram_unknown">RAM: —</string>
+    <string name="no_app_to_open">No app to open this file</string>
+    <string name="remove_both_error">Can\'t remove both video and audio</string>
+
+    <string name="error_open_input">Cannot open the selected video</string>
+    <string name="error_no_video_track">No video track found in the input</string>
+    <string name="error_nothing_both_removed">Nothing to output: both tracks removed</string>
+    <string name="error_nothing_no_audio">Nothing to output: the source has no audio to keep</string>
+    <string name="error_video_encode_failed">Video encoding failed (code %1$d)</string>
+    <string name="error_open_output">Cannot open output for writing</string>
+    <string name="error_muxing_failed">Muxing failed (code %1$d)</string>
+
+    <string name="notif_channel_conversion">Video conversion</string>
+    <string name="notif_title_batch_paused">Paused</string>
+    <string name="notif_title_batch_converting">Converting</string>
+    <string name="notif_title_single_paused">Conversion paused</string>
+    <string name="notif_title_single_converting">Converting video</string>
+    <string name="notif_batch_progress_format">%1$s · %2$d/%3$d</string>
+    <string name="notif_text_format">%1$s · %2$d%%</string>
+    <string name="notif_text_batch_format">%1$s · %2$s</string>
+
+    <string name="summary_cancelled">Cancelled — %1$d of %2$d done</string>
+    <string name="summary_saved_one">Saved %1$s</string>
+    <string name="summary_converted_n">Converted %1$d videos</string>
+    <string name="summary_failed">Conversion failed</string>
+    <string name="summary_failed_reason">Conversion failed: %1$s</string>
+    <string name="summary_all_failed">All %1$d conversions failed</string>
+    <string name="summary_all_failed_reason">All %1$d conversions failed: %2$s</string>
+    <string name="summary_partial">Converted %1$d of %2$d (%3$d failed)</string>
 </resources>

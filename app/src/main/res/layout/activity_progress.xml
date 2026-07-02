@@ -19,7 +19,7 @@
         android:id="@+id/txtPhase"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Preparing…"
+        android:text="@string/preparing"
         android:textAppearance="?attr/textAppearanceTitleLarge" />
 
     <ProgressBar
@@ -51,7 +51,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Speed: —" />
+        android:text="@string/speed_unknown" />
 
     <TextView
         android:id="@+id/txtSize"
@@ -65,7 +65,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="RAM: —" />
+        android:text="@string/ram_unknown" />
 
     <LinearLayout
         android:layout_width="match_parent"

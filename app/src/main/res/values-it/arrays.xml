@@ -1,0 +1,24 @@
+<resources>
+    <string-array name="video_modes">
+        <item>Codifica HEVC (H.265)</item>
+        <item>Copia (senza ricodifica)</item>
+        <item>Rimuovi</item>
+    </string-array>
+
+    <string-array name="audio_modes">
+        <item>Codifica AAC-LC</item>
+        <item>Codifica HE-AAC v1</item>
+        <item>Codifica HE-AAC v2</item>
+        <item>Copia (senza ricodifica)</item>
+        <item>Rimuovi</item>
+    </string-array>
+
+    <string-array name="audio_bitrate_labels">
+        <item>24 kbps</item>
+        <item>32 kbps</item>
+        <item>40 kbps</item>
+        <item>64 kbps</item>
+        <item>96 kbps</item>
+        <item>128 kbps</item>
+    </string-array>
+</resources>

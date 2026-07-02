@@ -268,21 +268,24 @@ public class ConversionService extends Service implements ConversionJob.Listener
         String summary;
         if (batchCancelled) {
             finalStatus = Status.CANCELLED;
-            summary = "Cancelled — " + ok + " of " + total + " done" + size;
+            summary = getString(R.string.summary_cancelled, ok, total) + size;
         } else if (bad == 0) {
             finalStatus = Status.DONE;
             summary = (total == 1
-                    ? "Saved " + lastDisplayName
-                    : "Converted " + ok + " videos") + size;
+                    ? getString(R.string.summary_saved_one, lastDisplayName)
+                    : getString(R.string.summary_converted_n, ok)) + size;
         } else if (ok == 0) {
             finalStatus = Status.ERROR;
-            String reason = lastError != null ? ": " + lastError : "";
             summary = total == 1
-                    ? "Conversion failed" + reason
-                    : "All " + bad + " conversions failed" + reason;
+                    ? (lastError != null
+                            ? getString(R.string.summary_failed_reason, lastError)
+                            : getString(R.string.summary_failed))
+                    : (lastError != null
+                            ? getString(R.string.summary_all_failed_reason, bad, lastError)
+                            : getString(R.string.summary_all_failed, bad));
         } else {
             finalStatus = Status.DONE; // partial success
-            summary = "Converted " + ok + " of " + total + " (" + bad + " failed)" + size;
+            summary = getString(R.string.summary_partial, ok, total, bad) + size;
         }
 
         snapshot.status = finalStatus;
@@ -387,7 +390,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             NotificationChannel ch = new NotificationChannel(
-                    CHANNEL_ID, "Video conversion", NotificationManager.IMPORTANCE_LOW);
+                    CHANNEL_ID, getString(R.string.notif_channel_conversion), NotificationManager.IMPORTANCE_LOW);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
@@ -400,15 +403,16 @@ public class ConversionService extends Service implements ConversionJob.Listener
 
         String title;
         if (batch) {
-            title = (paused ? "Paused" : "Converting")
-                    + " · " + (snapshot.batchIndex + 1) + "/" + snapshot.batchTotal;
+            title = getString(R.string.notif_batch_progress_format,
+                    getString(paused ? R.string.notif_title_batch_paused : R.string.notif_title_batch_converting),
+                    snapshot.batchIndex + 1, snapshot.batchTotal);
         } else {
-            title = paused ? "Conversion paused" : "Converting video";
+            title = getString(paused ? R.string.notif_title_single_paused : R.string.notif_title_single_converting);
         }
 
-        String text = phaseLabel(snapshot.phase) + " · " + percent + "%";
+        String text = getString(R.string.notif_text_format, phaseLabel(snapshot.phase), percent);
         if (batch && snapshot.currentName != null) {
-            text = snapshot.currentName + " · " + phaseLabel(snapshot.phase);
+            text = getString(R.string.notif_text_batch_format, snapshot.currentName, phaseLabel(snapshot.phase));
         }
 
         PendingIntent content = PendingIntent.getActivity(this, 0,
@@ -426,11 +430,11 @@ public class ConversionService extends Service implements ConversionJob.Listener
                 .setContentIntent(content);
 
         if (paused) {
-            b.addAction(0, "Resume", actionIntent(ACTION_RESUME));
+            b.addAction(0, getString(R.string.resume), actionIntent(ACTION_RESUME));
         } else {
-            b.addAction(0, "Pause", actionIntent(ACTION_PAUSE));
+            b.addAction(0, getString(R.string.pause), actionIntent(ACTION_PAUSE));
         }
-        b.addAction(0, "Cancel", actionIntent(ACTION_CANCEL));
+        b.addAction(0, getString(R.string.cancel), actionIntent(ACTION_CANCEL));
         return b.build();
     }
 
@@ -446,7 +450,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
 
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_convert)
-                .setContentTitle("Neon Video Compressor")
+                .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
                 .setAutoCancel(true)
                 .setContentIntent(contentPi);
@@ -511,18 +515,18 @@ public class ConversionService extends Service implements ConversionJob.Listener
         return uri.getLastPathSegment();
     }
 
-    private static String phaseLabel(ConversionJob.Phase phase) {
+    private String phaseLabel(ConversionJob.Phase phase) {
         switch (phase) {
             case VIDEO:
-                return "Encoding video";
+                return getString(R.string.phase_video);
             case AUDIO:
-                return "Encoding audio";
+                return getString(R.string.phase_audio);
             case MUXING:
-                return "Finalizing";
+                return getString(R.string.phase_mux);
             case PUBLISHING:
-                return "Saving";
+                return getString(R.string.phase_publish);
             default:
-                return "Preparing";
+                return getString(R.string.preparing);
         }
     }
 

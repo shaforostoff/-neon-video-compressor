@@ -157,7 +157,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void showAboutDialog() {
         TextView message = new TextView(this);
-        message.setText(readAsset("about.txt"));
+        message.setText(readAboutText());
         int pad = (int) (20 * getResources().getDisplayMetrics().density);
         message.setPadding(pad, pad, pad, pad);
         message.setTextIsSelectable(true);
@@ -170,6 +170,13 @@ public class MainActivity extends AppCompatActivity {
                 .setView(scroll)
                 .setPositiveButton(R.string.done, null)
                 .show();
+    }
+
+    /** Picks the localized about text for the current language, falling back to English. */
+    private String readAboutText() {
+        String language = getResources().getConfiguration().getLocales().get(0).getLanguage();
+        String localized = readAsset("about_" + language + ".txt");
+        return !localized.isEmpty() ? localized : readAsset("about.txt");
     }
 
     private String readAsset(String name) {
@@ -282,7 +289,7 @@ public class MainActivity extends AppCompatActivity {
         Options o = buildOptions();
 
         if (o.removesVideo() && o.removesAudio()) {
-            Toast.makeText(this, "Can't remove both video and audio", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.remove_both_error, Toast.LENGTH_LONG).show();
             return;
         }
 

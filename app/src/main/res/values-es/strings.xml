@@ -1,0 +1,79 @@
+<resources>
+    <string name="app_name">Neon Video Compressor</string>
+
+    <string name="select_video">Seleccionar vídeos</string>
+    <string name="videos_selected">%1$d vídeos seleccionados</string>
+    <string name="no_file_selected">No hay archivos seleccionados</string>
+    <string name="video_settings">Vídeo</string>
+    <string name="audio_settings">Audio</string>
+    <string name="preset">Preajuste</string>
+    <string name="audio_bitrate">Tasa de bits de audio</string>
+    <string name="crf_label">Calidad (CRF): %1$d</string>
+    <string name="convert">Convertir</string>
+    <string name="preview">Vista previa (primeros 5 s)</string>
+    <string name="preview_needs_encode">La vista previa solo está disponible al codificar el vídeo</string>
+    <string name="preview_encoding">Codificando vista previa…</string>
+    <string name="preview_hint">Mantén pulsado para comparar · Pellizca o toca dos veces para hacer zoom</string>
+    <string name="preview_failed">No se pudo generar la vista previa</string>
+    <string name="label_encoded">CODIFICADO</string>
+    <string name="label_original">ORIGINAL</string>
+
+    <string name="open">Abrir</string>
+    <string name="share">Compartir</string>
+    <string name="share_via">Compartir mediante…</string>
+
+    <string name="pause">Pausar</string>
+    <string name="resume">Reanudar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="done">Hecho</string>
+
+    <string name="about">Acerca de</string>
+    <string name="about_title">Acerca de Neon Video Compressor</string>
+
+    <string name="close">Cerrar</string>
+    <string name="preparing">Preparando…</string>
+    <string name="phase_video">Codificando vídeo</string>
+    <string name="phase_audio">Codificando audio</string>
+    <string name="phase_mux">Finalizando</string>
+    <string name="phase_publish">Guardando</string>
+    <string name="phase_paused_format">%1$s (en pausa)</string>
+    <string name="batch_file_format">Archivo %1$d de %2$d</string>
+    <string name="batch_complete">Lote completado</string>
+    <string name="saved_to_music">Guardado en Música</string>
+    <string name="saved_to_movies">Guardado en Películas</string>
+    <string name="error_label">Error</string>
+    <string name="unknown_error">Error desconocido</string>
+    <string name="cancelled_label">Cancelado</string>
+    <string name="speed_format">Velocidad: %1$.2f× en tiempo real</string>
+    <string name="speed_unknown">Velocidad: —</string>
+    <string name="ram_format">RAM: %1$d MB</string>
+    <string name="ram_unknown">RAM: —</string>
+    <string name="no_app_to_open">No hay ninguna app para abrir este archivo</string>
+    <string name="remove_both_error">No se pueden eliminar el vídeo y el audio a la vez</string>
+
+    <string name="error_open_input">No se pudo abrir el vídeo seleccionado</string>
+    <string name="error_no_video_track">No se encontró ninguna pista de vídeo en el archivo</string>
+    <string name="error_nothing_both_removed">Nada que guardar: se eliminaron ambas pistas</string>
+    <string name="error_nothing_no_audio">Nada que guardar: el origen no tiene audio que conservar</string>
+    <string name="error_video_encode_failed">Error al codificar el vídeo (código %1$d)</string>
+    <string name="error_open_output">No se pudo abrir el archivo de salida para escritura</string>
+    <string name="error_muxing_failed">Error al combinar las pistas (código %1$d)</string>
+
+    <string name="notif_channel_conversion">Conversión de vídeo</string>
+    <string name="notif_title_batch_paused">En pausa</string>
+    <string name="notif_title_batch_converting">Convirtiendo</string>
+    <string name="notif_title_single_paused">Conversión en pausa</string>
+    <string name="notif_title_single_converting">Convirtiendo vídeo</string>
+    <string name="notif_batch_progress_format">%1$s · %2$d/%3$d</string>
+    <string name="notif_text_format">%1$s · %2$d%%</string>
+    <string name="notif_text_batch_format">%1$s · %2$s</string>
+
+    <string name="summary_cancelled">Cancelado: %1$d de %2$d completados</string>
+    <string name="summary_saved_one">Guardado %1$s</string>
+    <string name="summary_converted_n">%1$d vídeos convertidos</string>
+    <string name="summary_failed">Error en la conversión</string>
+    <string name="summary_failed_reason">Error en la conversión: %1$s</string>
+    <string name="summary_all_failed">Fallaron las %1$d conversiones</string>
+    <string name="summary_all_failed_reason">Fallaron las %1$d conversiones: %2$s</string>
+    <string name="summary_partial">Convertidos %1$d de %2$d (%3$d fallidos)</string>
+</resources>

@@ -1,0 +1,79 @@
+<resources>
+    <string name="app_name">Neon Video Compressor</string>
+
+    <string name="select_video">Вибрати відео</string>
+    <string name="videos_selected">Вибрано відео: %1$d</string>
+    <string name="no_file_selected">Файли не вибрано</string>
+    <string name="video_settings">Відео</string>
+    <string name="audio_settings">Аудіо</string>
+    <string name="preset">Пресет</string>
+    <string name="audio_bitrate">Бітрейт аудіо</string>
+    <string name="crf_label">Якість (CRF): %1$d</string>
+    <string name="convert">Конвертувати</string>
+    <string name="preview">Попередній перегляд (перші 5 с)</string>
+    <string name="preview_needs_encode">Попередній перегляд доступний лише під час перекодування відео</string>
+    <string name="preview_encoding">Кодування попереднього перегляду…</string>
+    <string name="preview_hint">Утримуйте для порівняння · Щипок або подвійний дотик для масштабування</string>
+    <string name="preview_failed">Не вдалося створити попередній перегляд</string>
+    <string name="label_encoded">ЗАКОДОВАНО</string>
+    <string name="label_original">ОРИГІНАЛ</string>
+
+    <string name="open">Відкрити</string>
+    <string name="share">Поділитися</string>
+    <string name="share_via">Поділитися через…</string>
+
+    <string name="pause">Пауза</string>
+    <string name="resume">Продовжити</string>
+    <string name="cancel">Скасувати</string>
+    <string name="done">Готово</string>
+
+    <string name="about">Про застосунок</string>
+    <string name="about_title">Про Neon Video Compressor</string>
+
+    <string name="close">Закрити</string>
+    <string name="preparing">Підготовка…</string>
+    <string name="phase_video">Кодування відео</string>
+    <string name="phase_audio">Кодування аудіо</string>
+    <string name="phase_mux">Завершення</string>
+    <string name="phase_publish">Збереження</string>
+    <string name="phase_paused_format">%1$s (пауза)</string>
+    <string name="batch_file_format">Файл %1$d з %2$d</string>
+    <string name="batch_complete">Пакет завершено</string>
+    <string name="saved_to_music">Збережено в Музиці</string>
+    <string name="saved_to_movies">Збережено у Відео</string>
+    <string name="error_label">Помилка</string>
+    <string name="unknown_error">Невідома помилка</string>
+    <string name="cancelled_label">Скасовано</string>
+    <string name="speed_format">Швидкість: %1$.2f× реального часу</string>
+    <string name="speed_unknown">Швидкість: —</string>
+    <string name="ram_format">ОЗП: %1$d МБ</string>
+    <string name="ram_unknown">ОЗП: —</string>
+    <string name="no_app_to_open">Немає застосунку для відкриття цього файлу</string>
+    <string name="remove_both_error">Не можна видалити одночасно відео й аудіо</string>
+
+    <string name="error_open_input">Не вдалося відкрити вибране відео</string>
+    <string name="error_no_video_track">У файлі не знайдено відеодоріжку</string>
+    <string name="error_nothing_both_removed">Нічого зберігати: обидві доріжки видалено</string>
+    <string name="error_nothing_no_audio">Нічого зберігати: у джерелі немає аудіо</string>
+    <string name="error_video_encode_failed">Помилка кодування відео (код %1$d)</string>
+    <string name="error_open_output">Не вдалося відкрити файл для запису</string>
+    <string name="error_muxing_failed">Помилка об\'єднання доріжок (код %1$d)</string>
+
+    <string name="notif_channel_conversion">Конвертація відео</string>
+    <string name="notif_title_batch_paused">Пауза</string>
+    <string name="notif_title_batch_converting">Конвертація</string>
+    <string name="notif_title_single_paused">Конвертацію призупинено</string>
+    <string name="notif_title_single_converting">Конвертація відео</string>
+    <string name="notif_batch_progress_format">%1$s · %2$d/%3$d</string>
+    <string name="notif_text_format">%1$s · %2$d%%</string>
+    <string name="notif_text_batch_format">%1$s · %2$s</string>
+
+    <string name="summary_cancelled">Скасовано — готово %1$d з %2$d</string>
+    <string name="summary_saved_one">Збережено: %1$s</string>
+    <string name="summary_converted_n">Конвертовано відео: %1$d</string>
+    <string name="summary_failed">Помилка конвертації</string>
+    <string name="summary_failed_reason">Помилка конвертації: %1$s</string>
+    <string name="summary_all_failed">Усі %1$d конвертації не вдалися</string>
+    <string name="summary_all_failed_reason">Усі %1$d конвертації не вдалися: %2$s</string>
+    <string name="summary_partial">Конвертовано %1$d з %2$d (помилок: %3$d)</string>
+</resources>

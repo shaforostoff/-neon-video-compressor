@@ -1,0 +1,79 @@
+<resources>
+    <string name="app_name">Neon Video Compressor</string>
+
+    <string name="select_video">Videos auswählen</string>
+    <string name="videos_selected">%1$d Videos ausgewählt</string>
+    <string name="no_file_selected">Keine Dateien ausgewählt</string>
+    <string name="video_settings">Video</string>
+    <string name="audio_settings">Audio</string>
+    <string name="preset">Voreinstellung</string>
+    <string name="audio_bitrate">Audio-Bitrate</string>
+    <string name="crf_label">Qualität (CRF): %1$d</string>
+    <string name="convert">Konvertieren</string>
+    <string name="preview">Vorschau (erste 5 s)</string>
+    <string name="preview_needs_encode">Die Vorschau ist nur beim Neukodieren des Videos verfügbar</string>
+    <string name="preview_encoding">Vorschau wird kodiert…</string>
+    <string name="preview_hint">Zum Vergleichen halten · Zum Zoomen zwei Finger oder Doppeltipp</string>
+    <string name="preview_failed">Vorschau konnte nicht erstellt werden</string>
+    <string name="label_encoded">KODIERT</string>
+    <string name="label_original">ORIGINAL</string>
+
+    <string name="open">Öffnen</string>
+    <string name="share">Teilen</string>
+    <string name="share_via">Teilen über…</string>
+
+    <string name="pause">Pause</string>
+    <string name="resume">Fortsetzen</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="done">Fertig</string>
+
+    <string name="about">Info</string>
+    <string name="about_title">Über Neon Video Compressor</string>
+
+    <string name="close">Schließen</string>
+    <string name="preparing">Wird vorbereitet…</string>
+    <string name="phase_video">Video wird kodiert</string>
+    <string name="phase_audio">Audio wird kodiert</string>
+    <string name="phase_mux">Wird finalisiert</string>
+    <string name="phase_publish">Wird gespeichert</string>
+    <string name="phase_paused_format">%1$s (pausiert)</string>
+    <string name="batch_file_format">Datei %1$d von %2$d</string>
+    <string name="batch_complete">Stapel abgeschlossen</string>
+    <string name="saved_to_music">In Musik gespeichert</string>
+    <string name="saved_to_movies">In Videos gespeichert</string>
+    <string name="error_label">Fehler</string>
+    <string name="unknown_error">Unbekannter Fehler</string>
+    <string name="cancelled_label">Abgebrochen</string>
+    <string name="speed_format">Geschwindigkeit: %1$.2f× Echtzeit</string>
+    <string name="speed_unknown">Geschwindigkeit: —</string>
+    <string name="ram_format">RAM: %1$d MB</string>
+    <string name="ram_unknown">RAM: —</string>
+    <string name="no_app_to_open">Keine App zum Öffnen dieser Datei</string>
+    <string name="remove_both_error">Video und Audio können nicht gleichzeitig entfernt werden</string>
+
+    <string name="error_open_input">Das ausgewählte Video konnte nicht geöffnet werden</string>
+    <string name="error_no_video_track">Keine Videospur in der Datei gefunden</string>
+    <string name="error_nothing_both_removed">Nichts zu speichern: beide Spuren wurden entfernt</string>
+    <string name="error_nothing_no_audio">Nichts zu speichern: die Quelle enthält kein zu behaltendes Audio</string>
+    <string name="error_video_encode_failed">Videokodierung fehlgeschlagen (Code %1$d)</string>
+    <string name="error_open_output">Ausgabedatei konnte nicht zum Schreiben geöffnet werden</string>
+    <string name="error_muxing_failed">Zusammenführen der Spuren fehlgeschlagen (Code %1$d)</string>
+
+    <string name="notif_channel_conversion">Videokonvertierung</string>
+    <string name="notif_title_batch_paused">Pausiert</string>
+    <string name="notif_title_batch_converting">Wird konvertiert</string>
+    <string name="notif_title_single_paused">Konvertierung pausiert</string>
+    <string name="notif_title_single_converting">Video wird konvertiert</string>
+    <string name="notif_batch_progress_format">%1$s · %2$d/%3$d</string>
+    <string name="notif_text_format">%1$s · %2$d%%</string>
+    <string name="notif_text_batch_format">%1$s · %2$s</string>
+
+    <string name="summary_cancelled">Abgebrochen — %1$d von %2$d fertig</string>
+    <string name="summary_saved_one">Gespeichert: %1$s</string>
+    <string name="summary_converted_n">%1$d Videos konvertiert</string>
+    <string name="summary_failed">Konvertierung fehlgeschlagen</string>
+    <string name="summary_failed_reason">Konvertierung fehlgeschlagen: %1$s</string>
+    <string name="summary_all_failed">Alle %1$d Konvertierungen fehlgeschlagen</string>
+    <string name="summary_all_failed_reason">Alle %1$d Konvertierungen fehlgeschlagen: %2$s</string>
+    <string name="summary_partial">%1$d von %2$d konvertiert (%3$d fehlgeschlagen)</string>
+</resources>
