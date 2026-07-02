@@ -7,19 +7,22 @@ import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 
 /**
- * Publishes a finished file into a shared MediaStore collection: video files into
- * Movies/, audio-only files into Music/.
+ * Manages the shared MediaStore item a conversion writes into: video files go to
+ * Movies/, audio-only files to Music/. The item is created up front as pending,
+ * muxed into directly (via its "rw" fd), then finalized — no intermediate copy.
  */
 public final class MediaStoreOutput {
 
-    public static Uri publish(Context ctx, File src, String displayName, boolean audioOnly)
+    /**
+     * Insert a still-hidden ({@code IS_PENDING=1}) item and return its Uri. Open
+     * it {@code "rw"} to get a seekable fd to mux into, then call
+     * {@link #finalizePending} on success or {@link ContentResolver#delete} on
+     * failure.
+     */
+    public static Uri createPending(Context ctx, String displayName, boolean audioOnly)
             throws IOException {
         ContentResolver cr = ctx.getContentResolver();
 
@@ -37,24 +40,14 @@ public final class MediaStoreOutput {
         if (item == null) {
             throw new IOException("MediaStore insert failed");
         }
-
-        try (OutputStream os = cr.openOutputStream(item);
-             InputStream is = new FileInputStream(src)) {
-            if (os == null) throw new IOException("Cannot open output stream");
-            byte[] buf = new byte[1 << 16];
-            int n;
-            while ((n = is.read(buf)) > 0) {
-                os.write(buf, 0, n);
-            }
-        } catch (IOException e) {
-            cr.delete(item, null, null);
-            throw e;
-        }
-
-        values.clear();
-        values.put(MediaStore.MediaColumns.IS_PENDING, 0);
-        cr.update(item, values, null, null);
         return item;
+    }
+
+    /** Clear {@code IS_PENDING} so the finished item becomes visible to other apps. */
+    public static void finalizePending(Context ctx, Uri item) {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+        ctx.getContentResolver().update(item, values, null, null);
     }
 
     private MediaStoreOutput() {

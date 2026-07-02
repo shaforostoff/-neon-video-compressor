@@ -127,6 +127,60 @@ static int64_t fdsrc_seek(void *opaque, int64_t offset, int whence) {
     return s->pos;
 }
 
+// Write side of the same custom AVIO. pwrite is position-independent, so it
+// leaves the fd's file offset untouched and can safely share the fd with a
+// concurrent read handle (see fd_io_open below).
+static int fdsink_write(void *opaque, const uint8_t *buf, int size) {
+    FdSource *s = (FdSource *) opaque;
+    int done = 0;
+    while (done < size) {
+        ssize_t n = pwrite(s->fd, buf + done, (size_t) (size - done), s->pos);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return AVERROR(errno);
+        }
+        if (n == 0) break;
+        s->pos += n;
+        done += n;
+    }
+    return done;
+}
+
+// +faststart shifts the file after the trailer is written and, to do so,
+// re-opens the output "file" for reading via s->io_open (see
+// ff_format_shift_data). We can't reopen by path (scoped storage, same reason
+// as inputs), so we hand back a read handle over the *same* output fd. The
+// output fd is stashed in s->opaque by nativeRemux; pread/pwrite keep the read
+// and write positions independent.
+static int fd_io_open(AVFormatContext *s, AVIOContext **pb, const char *url,
+                      int flags, AVDictionary **opts) {
+    (void) url;
+    (void) flags;
+    (void) opts;
+    FdSource *rd = calloc(1, sizeof(FdSource));
+    if (!rd) return AVERROR(ENOMEM);
+    rd->fd = (int) (intptr_t) s->opaque;
+    rd->pos = 0;
+    size_t bufsz = 1 << 16;
+    uint8_t *buf = av_malloc(bufsz);
+    if (!buf) { free(rd); return AVERROR(ENOMEM); }
+    rd->avio = avio_alloc_context(buf, (int) bufsz, 0, rd, fdsrc_read, NULL, fdsrc_seek);
+    if (!rd->avio) { av_free(buf); free(rd); return AVERROR(ENOMEM); }
+    *pb = rd->avio;
+    return 0;
+}
+
+static int fd_io_close2(AVFormatContext *s, AVIOContext *pb) {
+    (void) s;
+    if (pb) {
+        FdSource *rd = pb->opaque;
+        av_freep(&pb->buffer);
+        avio_context_free(&pb);
+        free(rd);
+    }
+    return 0;
+}
+
 // Opens an input from a raw fd using a custom AVIO. Returns NULL on failure.
 static AVFormatContext *fd_open_input(int fd, Control *ctrl, FdSource **out) {
     FdSource *s = calloc(1, sizeof(FdSource));
@@ -601,7 +655,7 @@ end:
 }
 
 // ---------------------------------------------------------------------------
-// nativeRemux: stream-copy video (videoFd) + audio (audioFd, or -1) into outPath
+// nativeRemux: stream-copy video (videoFd) + audio (audioFd, or -1) into outFd
 // with +faststart. Forces hvc1 tag on the video when videoWasEncoded.
 // ---------------------------------------------------------------------------
 typedef struct {
@@ -666,15 +720,16 @@ static int src_write(CopySource *s, AVFormatContext *ofmt) {
 JNIEXPORT jint JNICALL
 Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
         JNIEnv *env, jclass clazz, jint videoFd, jint audioFd,
-        jstring joutPath, jboolean videoWasEncoded) {
+        jint outFd, jboolean videoWasEncoded) {
 
-    const char *outPath = (*env)->GetStringUTFChars(env, joutPath, NULL);
     int ret = RET_ERROR;
     int header_written = 0;
     int have_video = (videoFd >= 0);
     int have_audio = (audioFd >= 0);
 
     CopySource v = {0}, a = {0};
+    FdSource out = {0};
+    out.fd = outFd;
     AVFormatContext *ofmt = NULL;
 
     if (have_video && src_open(&v, videoFd, AVMEDIA_TYPE_VIDEO) < 0) {
@@ -689,14 +744,13 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
     }
     if (!have_video && !have_audio) { LOGE("remux: no input streams"); goto end; }
 
-    if (avformat_alloc_output_context2(&ofmt, NULL, NULL, outPath) < 0 || !ofmt) {
-        // This FFmpeg build has no ipod muxer, which owns the .m4a extension, so
-        // the filename guess fails for audio-only output. The mp4 muxer produces
-        // a compatible ISO-BMFF container, so force it explicitly.
-        if (avformat_alloc_output_context2(&ofmt, NULL, "mp4", outPath) < 0 || !ofmt) {
-            LOGE("remux: no output muxer for %s", outPath);
-            goto end;
-        }
+    // Output goes straight to the caller's fd (the MediaStore item), so there is
+    // no path to guess a muxer from. The mp4 muxer produces a compatible
+    // ISO-BMFF container for both video and audio-only output; the dummy
+    // filename only sets ofmt->url (unused: our io_open ignores it).
+    if (avformat_alloc_output_context2(&ofmt, NULL, "mp4", "output.mp4") < 0 || !ofmt) {
+        LOGE("remux: no output muxer");
+        goto end;
     }
 
     // Video output stream
@@ -720,8 +774,20 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
         a.out->time_base = a.fmt->streams[a.stream_index]->time_base;
     }
 
-    if (!(ofmt->oformat->flags & AVFMT_NOFILE)) {
-        if (avio_open(&ofmt->pb, outPath, AVIO_FLAG_WRITE) < 0) goto end;
+    // Custom write AVIO over the output fd. A seek callback marks it seekable so
+    // the mp4 muxer can patch box sizes and +faststart can shift the moov. The
+    // fd is stashed in ofmt->opaque so fd_io_open can reopen it for reading.
+    {
+        uint8_t *wbuf = av_malloc(1 << 16);
+        if (!wbuf) goto end;
+        out.avio = avio_alloc_context(wbuf, 1 << 16, 1 /* write */, &out,
+                                      NULL, fdsink_write, fdsrc_seek);
+        if (!out.avio) { av_free(wbuf); goto end; }
+        ofmt->pb = out.avio;
+        ofmt->flags |= AVFMT_FLAG_CUSTOM_IO;
+        ofmt->io_open = fd_io_open;
+        ofmt->io_close2 = fd_io_close2;
+        ofmt->opaque = (void *) (intptr_t) outFd;
     }
 
     AVDictionary *opts = NULL;
@@ -762,14 +828,14 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeRemux(
 
 end:
     if (ofmt) {
-        if (ofmt->pb && !(ofmt->oformat->flags & AVFMT_NOFILE)) {
-            avio_closep(&ofmt->pb);
-        }
-        avformat_free_context(ofmt);
+        avformat_free_context(ofmt); // AVFMT_FLAG_CUSTOM_IO: leaves out.avio to us
+    }
+    if (out.avio) {
+        av_freep(&out.avio->buffer);
+        avio_context_free(&out.avio);
     }
     if (have_video) src_close(&v);
     if (have_audio) src_close(&a);
-    (*env)->ReleaseStringUTFChars(env, joutPath, outPath);
     return ret;
 }
 

@@ -59,12 +59,14 @@ public final class NativeConverter {
 
     /**
      * Stream-copy the first video stream of {@code videoFd} and the first audio
-     * stream of {@code audioFd} into {@code outPath} with {@code +faststart}.
-     * Pass -1 for either fd to omit that track; passing -1 for {@code videoFd}
-     * produces an audio-only file (use an {@code .m4a} {@code outPath}). Forces
-     * the {@code hvc1} tag when {@code videoWasEncoded}.
+     * stream of {@code audioFd} straight into {@code outFd} with {@code +faststart}
+     * (an mp4/ISO-BMFF container). {@code outFd} must be a seekable, readable and
+     * writable fd (e.g. a MediaStore item opened {@code "rw"}) — {@code +faststart}
+     * reopens it for reading to relocate the moov atom. Pass -1 for either input
+     * fd to omit that track; passing -1 for {@code videoFd} produces an audio-only
+     * file. Forces the {@code hvc1} tag when {@code videoWasEncoded}.
      */
-    public static native int nativeRemux(int videoFd, int audioFd, String outPath,
+    public static native int nativeRemux(int videoFd, int audioFd, int outFd,
                                          boolean videoWasEncoded);
 
     private NativeConverter() {

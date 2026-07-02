@@ -8,6 +8,7 @@ import android.os.SystemClock;
 import android.provider.OpenableColumns;
 
 import java.io.File;
+import java.io.IOException;
 
 /**
  * Orchestrates a single conversion: probe -> (video pass) -> (audio pass) ->
@@ -58,7 +59,6 @@ public class ConversionJob {
     // "bytes written so far" size for progress display.
     private File videoTemp;
     private File audioTemp;
-    private File finalTemp;
 
     public ConversionJob(Context context, Uri inputUri, long sourceSizeBytes, Options options,
                          JobControl control, Listener listener) {
@@ -74,11 +74,10 @@ public class ConversionJob {
         File cache = context.getCacheDir();
         videoTemp = new File(cache, "video_tmp.mp4");
         audioTemp = new File(cache, "audio_tmp.m4a");
-        // Removing the video track yields an audio-only container (.m4a); the
-        // extension drives the muxer FFmpeg selects for the final file.
+        // Removing the video track yields an audio-only container; the final file
+        // is muxed straight into the MediaStore item, so there is no out_tmp.
         boolean audioOnly = options.removesVideo();
-        finalTemp = new File(cache, audioOnly ? "out_tmp.m4a" : "out_tmp.mp4");
-        deleteQuietly(videoTemp, audioTemp, finalTemp);
+        deleteQuietly(videoTemp, audioTemp);
 
         ParcelFileDescriptor inputPfd = null;
         try {
@@ -149,11 +148,16 @@ public class ConversionJob {
                 }
             }
 
-            // --- Mux pass ---
+            // --- Mux pass: stream-copy straight into the MediaStore target ---
+            // The final file is muxed directly into the destination item's "rw"
+            // fd, so there is no full-size out_tmp and no publish-time copy.
             setPhase(Phase.MUXING);
+            String displayName = buildOutputName(audioOnly);
+            Uri item = MediaStoreOutput.createPending(context, displayName, audioOnly);
+            boolean finalized = false;
             ParcelFileDescriptor videoPfd = null;
             ParcelFileDescriptor audioPfd = null;
-            int muxResult;
+            ParcelFileDescriptor outPfd = null;
             try {
                 if (encodeVideo) {
                     videoPfd = ParcelFileDescriptor.open(videoTemp, ParcelFileDescriptor.MODE_READ_ONLY);
@@ -167,29 +171,42 @@ public class ConversionJob {
                     audioPfd = context.getContentResolver().openFileDescriptor(inputUri, "r");
                 }
 
+                outPfd = context.getContentResolver().openFileDescriptor(item, "rw");
+                if (outPfd == null) throw new IOException("Cannot open output for writing");
+
                 int videoFd = videoPfd != null ? videoPfd.getFd() : -1;
                 int audioFd = audioPfd != null ? audioPfd.getFd() : -1;
-                muxResult = NativeConverter.nativeRemux(
-                        videoFd, audioFd, finalTemp.getAbsolutePath(), encodeVideo);
+                int muxResult = NativeConverter.nativeRemux(
+                        videoFd, audioFd, outPfd.getFd(), encodeVideo);
+                if (muxResult != NativeConverter.RET_OK) {
+                    listener.onError("Muxing failed (code " + muxResult + ")");
+                    return; // finally deletes the still-pending item
+                }
+                if (control.cancelled) {
+                    listener.onCancelled();
+                    return;
+                }
+
+                // Close the output fd so all writes flush before we unhide it.
+                closeQuietly(outPfd);
+                outPfd = null;
+
+                // --- Publish: just clear IS_PENDING (the bytes are already there) ---
+                setPhase(Phase.PUBLISHING);
+                MediaStoreOutput.finalizePending(context, item);
+                finalized = true;
+                listener.onCompleted(item, displayName);
             } finally {
                 closeQuietly(videoPfd);
                 closeQuietly(audioPfd);
+                closeQuietly(outPfd);
+                if (!finalized) {
+                    try {
+                        context.getContentResolver().delete(item, null, null);
+                    } catch (Exception ignored) {
+                    }
+                }
             }
-            if (muxResult != NativeConverter.RET_OK) {
-                listener.onError("Muxing failed (code " + muxResult + ")");
-                return;
-            }
-
-            if (control.cancelled) {
-                listener.onCancelled();
-                return;
-            }
-
-            // --- Publish ---
-            setPhase(Phase.PUBLISHING);
-            String displayName = buildOutputName(audioOnly);
-            Uri out = MediaStoreOutput.publish(context, finalTemp, displayName, audioOnly);
-            listener.onCompleted(out, displayName);
 
         } catch (Exception e) {
             if (control.cancelled) {
@@ -198,7 +215,7 @@ public class ConversionJob {
                 listener.onError(e.getMessage() != null ? e.getMessage() : e.toString());
             }
         } finally {
-            deleteQuietly(videoTemp, audioTemp, finalTemp);
+            deleteQuietly(videoTemp, audioTemp);
             closeQuietly(inputPfd);
         }
     }
@@ -290,7 +307,9 @@ public class ConversionJob {
                 return lengthOf(videoTemp) + lengthOf(audioTemp);
             case MUXING:
             case PUBLISHING:
-                return lengthOf(finalTemp);
+                // Output streams straight to the MediaStore item (no temp to
+                // stat); approximate with the muxed inputs' combined size.
+                return lengthOf(videoTemp) + lengthOf(audioTemp);
             default:
                 return 0;
         }

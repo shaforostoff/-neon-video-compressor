@@ -10,7 +10,7 @@ import java.io.File;
  * launch.
  *
  * <p>All intermediate files ({@code video_tmp.mp4}, {@code audio_tmp.m4a},
- * {@code out_tmp.*}, {@code preview_*.mp4}) live in {@link #getCacheDir()} and
+ * {@code preview_*.mp4}) live in {@link #getCacheDir()} and
  * are normally removed by finally-block cleanup. But a hard process kill (e.g.
  * the OS reclaiming a paused, backgrounded encode) skips those finally blocks
  * and leaves a partial file behind. Such a file cannot be resumed — the video
