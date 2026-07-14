@@ -29,6 +29,9 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.IntentSenderRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -147,6 +150,19 @@ public class ProgressActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_progress);
+
+        // On SDK 35+ the app is drawn edge-to-edge and android:statusBarColor is
+        // ignored, so the content (and its opaque background) extends behind the
+        // status bar, hiding the clock/battery. Consume the system-bar insets as
+        // padding on top of the existing 24dp so nothing sits under the bars.
+        View root = findViewById(R.id.progressRoot);
+        final int basePad = Math.round(24 * getResources().getDisplayMetrics().density);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(basePad + bars.left, basePad + bars.top,
+                    basePad + bars.right, basePad + bars.bottom);
+            return insets;
+        });
 
         txtBatch = findViewById(R.id.txtBatch);
         txtPhase = findViewById(R.id.txtPhase);
