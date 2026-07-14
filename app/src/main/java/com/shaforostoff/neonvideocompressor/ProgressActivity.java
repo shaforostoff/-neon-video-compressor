@@ -20,6 +20,8 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.shaforostoff.neonvideocompressor.engine.ConversionJob;
 import com.shaforostoff.neonvideocompressor.service.ConversionService;
 
 import java.util.ArrayList;
@@ -62,6 +64,9 @@ public class ProgressActivity extends AppCompatActivity {
     private boolean bound;
     private boolean paused;
     private boolean finishedState;
+    // Phase from the last rendered snapshot; decides whether the Stop dialog can
+    // offer to save a partial file (only the direct video encode can).
+    private ConversionJob.Phase lastPhase = ConversionJob.Phase.PROBING;
 
     // Binding with flags=0 to a service that already stopped never connects, so
     // a finish that happened while we were unbound (screen off) would leave the
@@ -119,7 +124,7 @@ public class ProgressActivity extends AppCompatActivity {
             if (finishedState) {
                 finish();
             } else if (bound) {
-                service.cancel();
+                showStopDialog();
             }
         });
         btnOpen.setOnClickListener(v -> {
@@ -179,8 +184,34 @@ public class ProgressActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Stop was pressed mid-run: let the user choose between keeping the part
+     * that is already encoded (a playable "first N seconds", with its audio) and
+     * discarding it. Saving is only possible during the video-encode phase; in
+     * any other phase stopping simply discards the current file.
+     */
+    private void showStopDialog() {
+        boolean canSavePartial = lastPhase == ConversionJob.Phase.VIDEO;
+        MaterialAlertDialogBuilder b = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.stop_dialog_title)
+                .setMessage(canSavePartial
+                        ? R.string.stop_dialog_message
+                        : R.string.stop_dialog_message_nosave)
+                .setNegativeButton(R.string.stop_discard, (d, w) -> {
+                    if (bound) service.cancel();
+                })
+                .setNeutralButton(R.string.stop_keep, null);
+        if (canSavePartial) {
+            b.setPositiveButton(R.string.stop_save_partial, (d, w) -> {
+                if (bound) service.stopAndSave();
+            });
+        }
+        b.show();
+    }
+
     private void render(ConversionService.Snapshot s) {
         boolean batch = s.batchTotal > 1;
+        lastPhase = s.phase;
         int percent = Math.round(s.batchFraction() * 100);
         progressBar.setProgress(percent);
         txtPercent.setText(percent + "%");
@@ -213,6 +244,7 @@ public class ProgressActivity extends AppCompatActivity {
                 }
                 btnPauseResume.setText(paused ? R.string.resume : R.string.pause);
                 btnPauseResume.setEnabled(true);
+                btnCancel.setText(R.string.stop);
                 rowResultActions.setVisibility(View.GONE);
                 if (paused) {
                     startRamTicker();

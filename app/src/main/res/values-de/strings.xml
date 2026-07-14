@@ -26,6 +26,13 @@
     <string name="pause">Pause</string>
     <string name="resume">Fortsetzen</string>
     <string name="cancel">Abbrechen</string>
+    <string name="stop">Stopp</string>
+    <string name="stop_dialog_title">Konvertierung stoppen?</string>
+    <string name="stop_dialog_message">Du kannst den bereits kodierten Teil (mit Ton) als kürzeres Video behalten oder verwerfen.</string>
+    <string name="stop_dialog_message_nosave">In dieser Phase kann nichts gerettet werden; Stoppen verwirft die aktuelle Datei.</string>
+    <string name="stop_save_partial">Teil speichern</string>
+    <string name="stop_discard">Verwerfen</string>
+    <string name="stop_keep">Weitermachen</string>
     <string name="done">Fertig</string>
 
     <string name="about">Info</string>
@@ -77,6 +84,8 @@
 
     <string name="summary_cancelled">Abgebrochen — %1$d von %2$d fertig</string>
     <string name="summary_saved_one">Gespeichert: %1$s</string>
+    <string name="summary_saved_partial">Anfang von %1$s gespeichert (vorzeitig gestoppt)</string>
+    <string name="summary_stopped_early">(vorzeitig gestoppt)</string>
     <string name="summary_converted_n">%1$d Videos konvertiert</string>
     <string name="summary_failed">Konvertierung fehlgeschlagen</string>
     <string name="summary_failed_reason">Konvertierung fehlgeschlagen: %1$s</string>

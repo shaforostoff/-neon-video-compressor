@@ -12,6 +12,7 @@ public class JobControl {
 
     public volatile boolean paused;
     public volatile boolean cancelled;
+    public volatile boolean stopRequested;
 
     public JobControl() {
         nativeHandle = NativeConverter.nativeCreateControl();
@@ -32,6 +33,18 @@ public class JobControl {
     public void cancel() {
         cancelled = true;
         NativeConverter.nativeCancel(nativeHandle);
+        synchronized (lock) {
+            lock.notifyAll();
+        }
+    }
+
+    /**
+     * Graceful stop: the direct encode+mux pass finalizes the output with what
+     * has been encoded so far instead of discarding it.
+     */
+    public void requestStop() {
+        stopRequested = true;
+        NativeConverter.nativeRequestStop(nativeHandle);
         synchronized (lock) {
             lock.notifyAll();
         }

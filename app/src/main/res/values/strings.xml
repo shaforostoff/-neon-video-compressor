@@ -26,6 +26,13 @@
     <string name="pause">Pause</string>
     <string name="resume">Resume</string>
     <string name="cancel">Cancel</string>
+    <string name="stop">Stop</string>
+    <string name="stop_dialog_title">Stop conversion?</string>
+    <string name="stop_dialog_message">You can keep the part that is already encoded (with its audio) as a shorter video, or discard it.</string>
+    <string name="stop_dialog_message_nosave">Nothing can be salvaged at this stage; stopping will discard the current file.</string>
+    <string name="stop_save_partial">Save part</string>
+    <string name="stop_discard">Discard</string>
+    <string name="stop_keep">Keep going</string>
     <string name="done">Done</string>
 
     <string name="about">About</string>
@@ -77,6 +84,8 @@
 
     <string name="summary_cancelled">Cancelled — %1$d of %2$d done</string>
     <string name="summary_saved_one">Saved %1$s</string>
+    <string name="summary_saved_partial">Saved the beginning of %1$s (stopped early)</string>
+    <string name="summary_stopped_early">(stopped early)</string>
     <string name="summary_converted_n">Converted %1$d videos</string>
     <string name="summary_failed">Conversion failed</string>
     <string name="summary_failed_reason">Conversion failed: %1$s</string>

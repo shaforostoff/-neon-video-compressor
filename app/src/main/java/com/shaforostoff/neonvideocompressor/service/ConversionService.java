@@ -72,6 +72,10 @@ public class ConversionService extends Service implements ConversionJob.Listener
         public int failed;
         public String currentName;     // display name of the current source file
         public boolean audioOnly;      // output has no video track (.m4a)
+        // True when the (last) output was stopped early and holds only the
+        // beginning of the source. Consumers must not treat such a file as a
+        // full replacement for the original.
+        public boolean partial;
         public final ArrayList<Uri> outputs = new ArrayList<>(); // all successful outputs
 
         /** Progress across the whole batch, factoring in completed files. */
@@ -105,6 +109,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
     private Thread worker;
     private PowerManager.WakeLock wakeLock;
     private volatile boolean batchCancelled;
+    private volatile boolean batchStopped; // graceful stop: keep the partial file, skip the rest
     private long lastNotifMs = 0;
 
     // Aggregated results across the batch (worker-thread only).
@@ -169,9 +174,12 @@ public class ConversionService extends Service implements ConversionJob.Listener
 
         createChannel();
         lastTerminal = null; // a stale result must not shadow this new run
+        batchCancelled = false;
+        batchStopped = false;
         snapshot.status = Status.RUNNING;
         snapshot.batchTotal = inputs.size();
         snapshot.batchIndex = 0;
+        snapshot.partial = false;
         snapshot.audioOnly = options.removesVideo();
         startForegroundCompat(buildProgressNotification());
         acquireWakeLock();
@@ -182,7 +190,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
 
     private void runBatch(ArrayList<Uri> inputs, Options options) {
         for (int i = 0; i < inputs.size(); i++) {
-            if (batchCancelled) break;
+            if (batchCancelled || batchStopped) break;
 
             Uri input = inputs.get(i);
             snapshot.batchIndex = i;
@@ -238,9 +246,10 @@ public class ConversionService extends Service implements ConversionJob.Listener
     }
 
     @Override
-    public void onCompleted(Uri output, String displayName) {
+    public void onCompleted(Uri output, String displayName, boolean partial) {
         snapshot.succeeded++;
         snapshot.overall = 1f;
+        if (partial) snapshot.partial = true;
         lastOutput = output;
         lastDisplayName = displayName;
         if (output != null) {
@@ -301,9 +310,16 @@ public class ConversionService extends Service implements ConversionJob.Listener
             summary = getString(R.string.summary_cancelled, ok, total) + extra;
         } else if (bad == 0) {
             finalStatus = Status.DONE;
-            summary = (total == 1
-                    ? getString(R.string.summary_saved_one, lastDisplayName)
-                    : getString(R.string.summary_converted_n, ok)) + extra;
+            String head;
+            if (total == 1) {
+                head = getString(snapshot.partial
+                        ? R.string.summary_saved_partial
+                        : R.string.summary_saved_one, lastDisplayName);
+            } else {
+                head = getString(R.string.summary_converted_n, ok);
+                if (batchStopped) head += " " + getString(R.string.summary_stopped_early);
+            }
+            summary = head + extra;
         } else if (ok == 0) {
             finalStatus = Status.ERROR;
             summary = total == 1
@@ -396,6 +412,25 @@ public class ConversionService extends Service implements ConversionJob.Listener
         batchCancelled = true;
         synchronized (controlLock) {
             if (control != null) control.cancel();
+        }
+    }
+
+    /**
+     * Graceful stop: finalize the current file with everything encoded so far
+     * (a playable "first N seconds" with matching audio) and skip the rest of
+     * the batch. Only the direct video-encode pass can salvage a partial file;
+     * in any other phase there is nothing worth keeping, so this cancels.
+     */
+    public void stopAndSave() {
+        batchStopped = true;
+        synchronized (controlLock) {
+            if (control != null) {
+                if (snapshot.phase == ConversionJob.Phase.VIDEO) {
+                    control.requestStop();
+                } else {
+                    control.cancel();
+                }
+            }
         }
     }
 

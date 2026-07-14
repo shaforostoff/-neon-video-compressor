@@ -21,6 +21,8 @@ public final class NativeConverter {
     public static final int RET_OK = 0;
     public static final int RET_ERROR = -1;
     public static final int RET_CANCELLED = -100;
+    /** Stopped early on request; the output was finalized with the partial content. */
+    public static final int RET_STOPPED = -101;
 
     /** @return {@code [durationUs, hasAudio, width, height, rotationDeg, hasVideo]} */
     public static native long[] nativeProbe(int fd);
@@ -31,6 +33,13 @@ public final class NativeConverter {
     public static native void nativeSetPaused(long handle, boolean paused);
 
     public static native void nativeCancel(long handle);
+
+    /**
+     * Graceful stop: the running {@link #nativeTranscodeMux} finalizes the output
+     * with everything encoded so far (audio truncated to match) and returns
+     * {@link #RET_STOPPED}. Other passes treat it like a pause-breaking no-op.
+     */
+    public static native void nativeRequestStop(long handle);
 
     public static native void nativeDestroyControl(long handle);
 
@@ -47,6 +56,21 @@ public final class NativeConverter {
     public static native int nativeTranscodeVideo(int inFd, String outPath, int crf,
                                                   String preset, long ctrlHandle,
                                                   long maxDurationUs, ProgressCallback cb);
+
+    /**
+     * Decode {@code inFd}'s video, encode it to HEVC (libx265, {@code hvc1}) and
+     * mux it — interleaved with the first audio stream of {@code audioFd}, or
+     * video-only when {@code audioFd} is -1 — straight into {@code outFd} with
+     * {@code +faststart}. No temp file and no separate remux pass; {@code outFd}
+     * has the same seekable/readable "rw" requirements as in {@link #nativeRemux}.
+     *
+     * @return {@link #RET_OK}, {@link #RET_STOPPED} (stop requested; the file was
+     * finalized with the partial content), {@link #RET_CANCELLED} or
+     * {@link #RET_ERROR}
+     */
+    public static native int nativeTranscodeMux(int inFd, int audioFd, int outFd,
+                                                int crf, String preset,
+                                                long ctrlHandle, ProgressCallback cb);
 
     /**
      * Stream-copy (no re-encode) the first {@code maxDurationUs} of the source's

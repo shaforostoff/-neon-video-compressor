@@ -11,9 +11,10 @@ import java.io.File;
 import java.io.IOException;
 
 /**
- * Orchestrates a single conversion: probe -> (video pass) -> (audio pass) ->
- * mux -> publish to MediaStore. Runs synchronously on a worker thread; pause and
- * cancel are driven through the shared {@link JobControl}.
+ * Orchestrates a single conversion: probe -> (audio pass) -> video encode muxed
+ * straight into the MediaStore item (or a stream-copy remux for non-encode
+ * modes) -> publish. Runs synchronously on a worker thread; pause, cancel and
+ * graceful stop are driven through the shared {@link JobControl}.
  */
 public class ConversionJob {
 
@@ -24,13 +25,14 @@ public class ConversionJob {
          * @param processedBytes estimated bytes of the source consumed so far
          *                       (source size scaled by {@code overall}; 0 if the
          *                       source size is unknown)
-         * @param outputBytes    bytes written to the output so far (read straight
-         *                       off the growing temp file on disk)
+         * @param outputBytes    bytes written to the output so far (read off the
+         *                       growing output file / audio temp on disk)
          */
         void onProgress(Phase phase, long processedUs, long durationUs, double speed,
                         float overall, long processedBytes, long outputBytes);
 
-        void onCompleted(Uri output, String displayName);
+        /** @param partial true when the encode was stopped early and the file holds only the beginning */
+        void onCompleted(Uri output, String displayName, boolean partial);
 
         void onError(String message);
 
@@ -61,10 +63,14 @@ public class ConversionJob {
     private long encodeActiveWallMs;
     private long encodeActiveMediaUs;
 
-    // Temp output files, used both to build the final result and to read a live
-    // "bytes written so far" size for progress display.
-    private File videoTemp;
+    // Audio temp file: the only intermediate left. The video pass muxes x265
+    // output and this audio straight into the final MediaStore item.
     private File audioTemp;
+
+    // Live handle to the final output while the direct encode+mux pass runs, so
+    // progress can report real output bytes (fstat) instead of a temp's size.
+    private volatile ParcelFileDescriptor liveOutPfd;
+    private long lastOutputBytes;
 
     public ConversionJob(Context context, Uri inputUri, long sourceSizeBytes, Options options,
                          JobControl control, Listener listener) {
@@ -78,12 +84,11 @@ public class ConversionJob {
 
     public void run() {
         File cache = context.getCacheDir();
-        videoTemp = new File(cache, "video_tmp.mp4");
         audioTemp = new File(cache, "audio_tmp.m4a");
         // Removing the video track yields an audio-only container; the final file
         // is muxed straight into the MediaStore item, so there is no out_tmp.
         boolean audioOnly = options.removesVideo();
-        deleteQuietly(videoTemp, audioTemp);
+        deleteQuietly(audioTemp);
 
         ParcelFileDescriptor inputPfd = null;
         try {
@@ -121,24 +126,8 @@ public class ConversionJob {
             }
             computeWeights(encodeVideo, encodeAudio);
 
-            // --- Video pass ---
-            if (encodeVideo) {
-                setPhase(Phase.VIDEO);
-                int r = NativeConverter.nativeTranscodeVideo(
-                        inputFd, videoTemp.getAbsolutePath(), options.crf, options.preset,
-                        control.nativeHandle(), 0L /* whole file */,
-                        processedUs -> report(Phase.VIDEO, processedUs));
-                if (r == NativeConverter.RET_CANCELLED || control.cancelled) {
-                    listener.onCancelled();
-                    return;
-                }
-                if (r != NativeConverter.RET_OK) {
-                    listener.onError(context.getString(R.string.error_video_encode_failed, r));
-                    return;
-                }
-            }
-
-            // --- Audio pass ---
+            // --- Audio pass (first): its output is interleaved into the final
+            // file while the video is encoded, so it must already exist.
             if (encodeAudio) {
                 setPhase(Phase.AUDIO);
                 int r = AudioEncoder.encode(
@@ -153,11 +142,12 @@ public class ConversionJob {
                     encodeAudio = false; // nothing to mux
                 }
             }
+            // A stop during the audio pass has nothing encoded worth saving yet.
+            if (control.stopRequested) {
+                listener.onCancelled();
+                return;
+            }
 
-            // --- Mux pass: stream-copy straight into the MediaStore target ---
-            // The final file is muxed directly into the destination item's "rw"
-            // fd, so there is no full-size out_tmp and no publish-time copy.
-            setPhase(Phase.MUXING);
             String displayName = buildOutputName(audioOnly);
             Uri item = MediaStoreOutput.createPending(context, displayName, audioOnly);
             boolean finalized = false;
@@ -165,32 +155,57 @@ public class ConversionJob {
             ParcelFileDescriptor audioPfd = null;
             ParcelFileDescriptor outPfd = null;
             try {
-                if (encodeVideo) {
-                    videoPfd = ParcelFileDescriptor.open(videoTemp, ParcelFileDescriptor.MODE_READ_ONLY);
-                } else if (copyVideo) {
-                    videoPfd = context.getContentResolver().openFileDescriptor(inputUri, "r");
-                } // else: video removed -> no video source
-
                 if (encodeAudio) {
                     audioPfd = ParcelFileDescriptor.open(audioTemp, ParcelFileDescriptor.MODE_READ_ONLY);
                 } else if (copyAudio) {
                     audioPfd = context.getContentResolver().openFileDescriptor(inputUri, "r");
                 }
+                int audioFd = audioPfd != null ? audioPfd.getFd() : -1;
 
                 outPfd = context.getContentResolver().openFileDescriptor(item, "rw");
                 if (outPfd == null) throw new IOException(context.getString(R.string.error_open_output));
 
-                int videoFd = videoPfd != null ? videoPfd.getFd() : -1;
-                int audioFd = audioPfd != null ? audioPfd.getFd() : -1;
-                int muxResult = NativeConverter.nativeRemux(
-                        videoFd, audioFd, outPfd.getFd(), encodeVideo);
-                if (muxResult != NativeConverter.RET_OK) {
-                    listener.onError(context.getString(R.string.error_muxing_failed, muxResult));
-                    return; // finally deletes the still-pending item
-                }
-                if (control.cancelled) {
-                    listener.onCancelled();
-                    return;
+                boolean partial = false;
+                if (encodeVideo) {
+                    // --- Video pass: encode x265 and mux (with the audio) straight
+                    // into the destination item's "rw" fd — no video temp file.
+                    setPhase(Phase.VIDEO);
+                    liveOutPfd = outPfd;
+                    int r;
+                    try {
+                        r = NativeConverter.nativeTranscodeMux(
+                                inputFd, audioFd, outPfd.getFd(),
+                                options.crf, options.preset, control.nativeHandle(),
+                                processedUs -> report(Phase.VIDEO, processedUs));
+                    } finally {
+                        liveOutPfd = null;
+                    }
+                    if (r == NativeConverter.RET_CANCELLED || control.cancelled) {
+                        listener.onCancelled();
+                        return; // finally deletes the still-pending item
+                    }
+                    if (r != NativeConverter.RET_OK && r != NativeConverter.RET_STOPPED) {
+                        listener.onError(context.getString(R.string.error_video_encode_failed, r));
+                        return;
+                    }
+                    partial = r == NativeConverter.RET_STOPPED;
+                } else {
+                    // --- Mux pass: stream-copy the kept tracks into the item.
+                    setPhase(Phase.MUXING);
+                    if (copyVideo) {
+                        videoPfd = context.getContentResolver().openFileDescriptor(inputUri, "r");
+                    } // else: video removed -> no video source
+                    int videoFd = videoPfd != null ? videoPfd.getFd() : -1;
+                    int muxResult = NativeConverter.nativeRemux(
+                            videoFd, audioFd, outPfd.getFd(), false);
+                    if (muxResult != NativeConverter.RET_OK) {
+                        listener.onError(context.getString(R.string.error_muxing_failed, muxResult));
+                        return;
+                    }
+                    if (control.cancelled) {
+                        listener.onCancelled();
+                        return;
+                    }
                 }
 
                 // Close the output fd so all writes flush before we unhide it.
@@ -201,8 +216,9 @@ public class ConversionJob {
                 setPhase(Phase.PUBLISHING);
                 MediaStoreOutput.finalizePending(context, item);
                 finalized = true;
-                listener.onCompleted(item, displayName);
+                listener.onCompleted(item, displayName, partial);
             } finally {
+                liveOutPfd = null;
                 closeQuietly(videoPfd);
                 closeQuietly(audioPfd);
                 closeQuietly(outPfd);
@@ -221,7 +237,7 @@ public class ConversionJob {
                 listener.onError(e.getMessage() != null ? e.getMessage() : e.toString());
             }
         } finally {
-            deleteQuietly(videoTemp, audioTemp);
+            deleteQuietly(audioTemp);
             closeQuietly(inputPfd);
         }
     }
@@ -238,10 +254,12 @@ public class ConversionJob {
         return encodeActiveWallMs;
     }
 
+    // Phase order is audio first, then video (which includes the muxing when the
+    // video is encoded), then mux (non-encode modes only) / publish.
     private void computeWeights(boolean video, boolean audio) {
         if (video && audio) {
-            wVideo = 0.88f;
-            wAudio = 0.10f;
+            wVideo = 0.90f;
+            wAudio = 0.08f;
             wMux = 0.02f;
         } else if (video) {
             wVideo = 0.97f;
@@ -265,11 +283,11 @@ public class ConversionJob {
         speed = 0;
         float base;
         switch (phase) {
-            case VIDEO:
+            case AUDIO:
                 base = 0f;
                 break;
-            case AUDIO:
-                base = wVideo;
+            case VIDEO:
+                base = wAudio;
                 break;
             case MUXING:
             case PUBLISHING:
@@ -301,7 +319,7 @@ public class ConversionJob {
         lastProcessedUs = processedUs;
 
         float frac = Math.max(0f, Math.min(1f, (float) processedUs / (float) durationUs));
-        float base = phase == Phase.AUDIO ? wVideo : 0f;
+        float base = phase == Phase.VIDEO ? wAudio : 0f;
         float weight = phase == Phase.AUDIO ? wAudio : wVideo;
         float overall = base + weight * frac;
         listener.onProgress(phase, processedUs, durationUs, speed, overall,
@@ -321,15 +339,22 @@ public class ConversionJob {
     /** Bytes actually written to disk so far for the given phase's output. */
     private long currentOutputBytes(Phase phase) {
         switch (phase) {
-            case VIDEO:
-                return lengthOf(videoTemp);
             case AUDIO:
-                return lengthOf(videoTemp) + lengthOf(audioTemp);
+                return lengthOf(audioTemp);
+            case VIDEO:
+                // The encode muxes straight into the MediaStore item; fstat the
+                // live output fd for the real size.
+                ParcelFileDescriptor p = liveOutPfd;
+                if (p != null) {
+                    long sz = p.getStatSize();
+                    if (sz > 0) lastOutputBytes = sz;
+                }
+                return lastOutputBytes;
             case MUXING:
             case PUBLISHING:
                 // Output streams straight to the MediaStore item (no temp to
-                // stat); approximate with the muxed inputs' combined size.
-                return lengthOf(videoTemp) + lengthOf(audioTemp);
+                // stat); approximate with the best size known so far.
+                return Math.max(lastOutputBytes, lengthOf(audioTemp));
             default:
                 return 0;
         }

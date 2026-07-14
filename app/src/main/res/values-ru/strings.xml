@@ -26,6 +26,13 @@
     <string name="pause">Пауза</string>
     <string name="resume">Продолжить</string>
     <string name="cancel">Отмена</string>
+    <string name="stop">Стоп</string>
+    <string name="stop_dialog_title">Остановить конвертацию?</string>
+    <string name="stop_dialog_message">Можно сохранить уже закодированную часть (со звуком) как более короткое видео или удалить её.</string>
+    <string name="stop_dialog_message_nosave">На этом этапе сохранять нечего; остановка удалит текущий файл.</string>
+    <string name="stop_save_partial">Сохранить часть</string>
+    <string name="stop_discard">Удалить</string>
+    <string name="stop_keep">Продолжить</string>
     <string name="done">Готово</string>
 
     <string name="about">О программе</string>
@@ -77,6 +84,8 @@
 
     <string name="summary_cancelled">Отменено — готово %1$d из %2$d</string>
     <string name="summary_saved_one">Сохранено: %1$s</string>
+    <string name="summary_saved_partial">Сохранено начало %1$s (остановлено досрочно)</string>
+    <string name="summary_stopped_early">(остановлено досрочно)</string>
     <string name="summary_converted_n">Сконвертировано видео: %1$d</string>
     <string name="summary_failed">Ошибка конвертации</string>
     <string name="summary_failed_reason">Ошибка конвертации: %1$s</string>

@@ -26,6 +26,13 @@
     <string name="pause">Пауза</string>
     <string name="resume">Продовжити</string>
     <string name="cancel">Скасувати</string>
+    <string name="stop">Стоп</string>
+    <string name="stop_dialog_title">Зупинити конвертацію?</string>
+    <string name="stop_dialog_message">Можна зберегти вже закодовану частину (зі звуком) як коротше відео або відкинути її.</string>
+    <string name="stop_dialog_message_nosave">На цьому етапі зберігати нічого; зупинка видалить поточний файл.</string>
+    <string name="stop_save_partial">Зберегти частину</string>
+    <string name="stop_discard">Відкинути</string>
+    <string name="stop_keep">Продовжити</string>
     <string name="done">Готово</string>
 
     <string name="about">Про застосунок</string>
@@ -77,6 +84,8 @@
 
     <string name="summary_cancelled">Скасовано — готово %1$d з %2$d</string>
     <string name="summary_saved_one">Збережено: %1$s</string>
+    <string name="summary_saved_partial">Збережено початок %1$s (зупинено достроково)</string>
+    <string name="summary_stopped_early">(зупинено достроково)</string>
     <string name="summary_converted_n">Конвертовано відео: %1$d</string>
     <string name="summary_failed">Помилка конвертації</string>
     <string name="summary_failed_reason">Помилка конвертації: %1$s</string>
