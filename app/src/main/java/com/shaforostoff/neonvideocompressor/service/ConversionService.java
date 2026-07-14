@@ -76,6 +76,9 @@ public class ConversionService extends Service implements ConversionJob.Listener
         // beginning of the source. Consumers must not treat such a file as a
         // full replacement for the original.
         public boolean partial;
+        // Source uri, single-file conversions only (null for batches): lets the
+        // result UI offer to delete/replace the original.
+        public Uri inputUri;
         public final ArrayList<Uri> outputs = new ArrayList<>(); // all successful outputs
 
         /** Progress across the whole batch, factoring in completed files. */
@@ -180,6 +183,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
         snapshot.batchTotal = inputs.size();
         snapshot.batchIndex = 0;
         snapshot.partial = false;
+        snapshot.inputUri = inputs.size() == 1 ? inputs.get(0) : null;
         snapshot.audioOnly = options.removesVideo();
         startForegroundCompat(buildProgressNotification());
         acquireWakeLock();

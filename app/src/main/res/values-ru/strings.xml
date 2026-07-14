@@ -33,6 +33,14 @@
     <string name="stop_save_partial">Сохранить часть</string>
     <string name="stop_discard">Удалить</string>
     <string name="stop_keep">Продолжить</string>
+    <string name="replace_original">Заменить оригинал</string>
+    <string name="replace_confirm_title">Заменить оригинал?</string>
+    <string name="replace_confirm_message">%1$s будет безвозвратно удалён. Сжатая версия останется в вашей библиотеке. Это действие нельзя отменить.</string>
+    <string name="replace_this_video">Оригинальное видео</string>
+    <string name="replace_confirm_delete">Удалить оригинал</string>
+    <string name="replace_done">Оригинал заменён</string>
+    <string name="replace_move_failed">Оригинал удалён, но сжатое видео осталось там, куда было сохранено</string>
+    <string name="replace_failed">Не удалось удалить оригинал</string>
     <string name="done">Готово</string>
 
     <string name="about">О программе</string>

@@ -1,22 +1,33 @@
 package com.shaforostoff.neonvideocompressor;
 
+import android.app.PendingIntent;
+import android.app.RecoverableSecurityException;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
+import android.content.ContentUris;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.text.format.Formatter;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
@@ -25,23 +36,30 @@ import com.shaforostoff.neonvideocompressor.engine.ConversionJob;
 import com.shaforostoff.neonvideocompressor.service.ConversionService;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Locale;
 
 public class ProgressActivity extends AppCompatActivity {
 
     private TextView txtBatch, txtPhase, txtPercent, txtTime, txtSpeed, txtSize, txtRam;
     private ProgressBar progressBar;
-    private MaterialButton btnPauseResume, btnCancel, btnOpen, btnShare;
+    private MaterialButton btnPauseResume, btnCancel, btnOpen, btnShare, btnReplace;
     private View rowResultActions;
 
     // Cached results so Open/Share survive rotation at DONE (the service may have
     // already stopped, so the recreated activity can't rely on a fresh snapshot).
     private final ArrayList<Uri> resultOutputs = new ArrayList<>();
     private boolean resultAudioOnly;
+    // Source of a single-file conversion + whether the output is partial: decide
+    // if "Replace original" may be offered (never for a stopped-early file).
+    private Uri resultInputUri;
+    private boolean resultPartial;
 
     private static final String STATE_OUTPUTS = "result_outputs";
     private static final String STATE_AUDIO_ONLY = "result_audio_only";
     private static final String STATE_FINISHED = "finished_state";
+    private static final String STATE_INPUT_URI = "result_input_uri";
+    private static final String STATE_PARTIAL = "result_partial";
 
     // getPss() walks /proc/self/smaps, so sample it at most once per second
     // rather than on every per-frame snapshot.
@@ -67,6 +85,35 @@ public class ProgressActivity extends AppCompatActivity {
     // Phase from the last rendered snapshot; decides whether the Stop dialog can
     // offer to save a partial file (only the direct video encode can).
     private ConversionJob.Phase lastPhase = ConversionJob.Phase.PROBING;
+
+    // Deleting the original usually needs the user's consent through a system
+    // dialog (MediaStore delete request / RecoverableSecurityException).
+    private Uri pendingDeleteUri; // API 29 retry target after consent
+
+    // Where the original lived (captured before it is deleted) so the compressed
+    // file can be moved into its place — possibly on another volume (SD card).
+    private String replaceVolume, replaceRelPath, replaceBaseName;
+    private final ActivityResultLauncher<IntentSenderRequest> deleteRequestLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), result -> {
+                if (result.getResultCode() != RESULT_OK) return; // user declined
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    // createDeleteRequest already performed the deletion.
+                    onOriginalDeleted();
+                } else {
+                    // API 29: consent granted, the delete must be re-issued.
+                    Uri uri = pendingDeleteUri;
+                    pendingDeleteUri = null;
+                    try {
+                        if (uri != null && getContentResolver().delete(uri, null, null) > 0) {
+                            onOriginalDeleted();
+                        } else {
+                            toastReplaceFailed();
+                        }
+                    } catch (Exception e) {
+                        toastReplaceFailed();
+                    }
+                }
+            });
 
     // Binding with flags=0 to a service that already stopped never connects, so
     // a finish that happened while we were unbound (screen off) would leave the
@@ -114,6 +161,7 @@ public class ProgressActivity extends AppCompatActivity {
         rowResultActions = findViewById(R.id.rowResultActions);
         btnOpen = findViewById(R.id.btnOpen);
         btnShare = findViewById(R.id.btnShare);
+        btnReplace = findViewById(R.id.btnReplace);
 
         btnPauseResume.setOnClickListener(v -> {
             if (!bound) return;
@@ -141,6 +189,7 @@ public class ProgressActivity extends AppCompatActivity {
             startActivity(OutputActions.share(this, resultOutputs, resultAudioOnly,
                     getString(R.string.share_via)));
         });
+        btnReplace.setOnClickListener(v -> confirmReplaceOriginal());
 
         // Restore cached results so Open/Share work after a rotation at DONE even
         // if the service has already stopped and the rebind finds it gone.
@@ -149,10 +198,13 @@ public class ProgressActivity extends AppCompatActivity {
             if (saved != null) resultOutputs.addAll(saved);
             resultAudioOnly = savedInstanceState.getBoolean(STATE_AUDIO_ONLY);
             finishedState = savedInstanceState.getBoolean(STATE_FINISHED);
+            resultInputUri = savedInstanceState.getParcelable(STATE_INPUT_URI);
+            resultPartial = savedInstanceState.getBoolean(STATE_PARTIAL);
             if (finishedState) {
                 btnPauseResume.setEnabled(false);
                 btnCancel.setText(R.string.close);
                 rowResultActions.setVisibility(resultOutputs.isEmpty() ? View.GONE : View.VISIBLE);
+                btnReplace.setVisibility(canReplaceOriginal() ? View.VISIBLE : View.GONE);
             }
         }
     }
@@ -163,6 +215,8 @@ public class ProgressActivity extends AppCompatActivity {
         out.putParcelableArrayList(STATE_OUTPUTS, resultOutputs);
         out.putBoolean(STATE_AUDIO_ONLY, resultAudioOnly);
         out.putBoolean(STATE_FINISHED, finishedState);
+        out.putParcelable(STATE_INPUT_URI, resultInputUri);
+        out.putBoolean(STATE_PARTIAL, resultPartial);
     }
 
     @Override
@@ -246,6 +300,7 @@ public class ProgressActivity extends AppCompatActivity {
                 btnPauseResume.setEnabled(true);
                 btnCancel.setText(R.string.stop);
                 rowResultActions.setVisibility(View.GONE);
+                btnReplace.setVisibility(View.GONE);
                 if (paused) {
                     startRamTicker();
                 } else {
@@ -270,7 +325,10 @@ public class ProgressActivity extends AppCompatActivity {
                 resultOutputs.clear();
                 resultOutputs.addAll(s.outputs);
                 resultAudioOnly = s.audioOnly;
+                resultInputUri = s.inputUri;
+                resultPartial = s.partial;
                 rowResultActions.setVisibility(resultOutputs.isEmpty() ? View.GONE : View.VISIBLE);
+                btnReplace.setVisibility(canReplaceOriginal() ? View.VISIBLE : View.GONE);
                 Toast.makeText(this, s.message != null ? s.message : savedTo,
                         Toast.LENGTH_LONG).show();
                 break;
@@ -286,6 +344,7 @@ public class ProgressActivity extends AppCompatActivity {
                 btnPauseResume.setEnabled(false);
                 btnCancel.setText(R.string.close);
                 rowResultActions.setVisibility(View.GONE);
+                btnReplace.setVisibility(View.GONE);
                 break;
             case CANCELLED:
                 finishedState = true;
@@ -298,10 +357,264 @@ public class ProgressActivity extends AppCompatActivity {
                 btnPauseResume.setEnabled(false);
                 btnCancel.setText(R.string.close);
                 rowResultActions.setVisibility(View.GONE);
+                btnReplace.setVisibility(View.GONE);
                 break;
             default:
                 break;
         }
+    }
+
+    // --- Replace original (delete the source file) ---------------------------
+
+    /**
+     * Replacing is only offered for a fully converted single file whose source
+     * we still know. A partial (stopped-early) output must never replace the
+     * original.
+     */
+    private boolean canReplaceOriginal() {
+        return !resultPartial && resultInputUri != null && !resultOutputs.isEmpty();
+    }
+
+    private void confirmReplaceOriginal() {
+        if (!canReplaceOriginal()) return;
+        // Picker uris redact the display name; resolve the real item for a
+        // recognizable name in the dialog.
+        Uri nameSource = isPhotoPickerUri(resultInputUri)
+                ? findMediaStoreUri(resultInputUri) : resultInputUri;
+        String name = nameSource != null ? queryDisplayName(nameSource) : null;
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.replace_confirm_title)
+                .setMessage(getString(R.string.replace_confirm_message,
+                        name != null ? name : getString(R.string.replace_this_video)))
+                .setPositiveButton(R.string.replace_confirm_delete,
+                        (d, w) -> deleteOriginal(resultInputUri))
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    /**
+     * Deletes the source file. Depending on where the video came from this is a
+     * SAF document delete, or a MediaStore delete that first bounces through a
+     * system consent dialog (we don't own the file).
+     */
+    private void deleteOriginal(Uri uri) {
+        android.util.Log.i(TAG_REPLACE, "deleteOriginal: " + uri);
+        try {
+            if (DocumentsContract.isDocumentUri(this, uri)) {
+                // SAF picker uri: prefer the underlying MediaStore item so the
+                // system consent flow applies; else delete through the provider.
+                Uri media = null;
+                try {
+                    media = MediaStore.getMediaUri(this, uri);
+                } catch (Exception e) {
+                    android.util.Log.w(TAG_REPLACE, "getMediaUri failed", e);
+                }
+                android.util.Log.i(TAG_REPLACE, "document uri -> media uri: " + media);
+                if (media != null) {
+                    uri = media;
+                } else {
+                    if (DocumentsContract.deleteDocument(getContentResolver(), uri)) {
+                        onOriginalDeleted();
+                    } else {
+                        android.util.Log.w(TAG_REPLACE, "deleteDocument returned false");
+                        toastReplaceFailed();
+                    }
+                    return;
+                }
+            } else if (isPhotoPickerUri(uri)) {
+                // Photo-picker grants are read-only; find the real item.
+                Uri media = findMediaStoreUri(uri);
+                android.util.Log.i(TAG_REPLACE, "picker uri -> media uri: " + media);
+                if (media == null) {
+                    toastReplaceFailed();
+                    return;
+                }
+                uri = media;
+            }
+
+            captureOriginalLocation(uri);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                PendingIntent pi = MediaStore.createDeleteRequest(
+                        getContentResolver(), Collections.singletonList(uri));
+                deleteRequestLauncher.launch(
+                        new IntentSenderRequest.Builder(pi.getIntentSender()).build());
+            } else {
+                try {
+                    if (getContentResolver().delete(uri, null, null) > 0) {
+                        onOriginalDeleted();
+                    } else {
+                        android.util.Log.w(TAG_REPLACE, "resolver.delete returned 0");
+                        toastReplaceFailed();
+                    }
+                } catch (RecoverableSecurityException e) {
+                    pendingDeleteUri = uri;
+                    deleteRequestLauncher.launch(new IntentSenderRequest.Builder(
+                            e.getUserAction().getActionIntent().getIntentSender()).build());
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w(TAG_REPLACE, "deleteOriginal failed for " + uri, e);
+            toastReplaceFailed();
+        }
+    }
+
+    private static final String TAG_REPLACE = "ReplaceOriginal";
+
+    private static boolean isPhotoPickerUri(Uri uri) {
+        String path = uri.getPath();
+        return "media".equals(uri.getAuthority()) && path != null && path.startsWith("/picker");
+    }
+
+    /**
+     * Locates the MediaStore video item behind a photo-picker uri. The picker
+     * redacts DISPLAY_NAME (it returns "<pickerId>.mp4"), so a name lookup is
+     * useless — but for local items the picker id IS the MediaStore {@code _ID}
+     * (verified on Android 15), so try that first and sanity-check by SIZE;
+     * fall back to a unique SIZE match.
+     */
+    private Uri findMediaStoreUri(Uri uri) {
+        long size = -1;
+        try (Cursor c = getContentResolver().query(uri,
+                new String[]{OpenableColumns.SIZE}, null, null, null)) {
+            if (c != null && c.moveToFirst()) size = c.getLong(0);
+        } catch (Exception ignored) {
+        }
+
+        Uri videos = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL);
+
+        try {
+            long id = ContentUris.parseId(uri);
+            Uri candidate = ContentUris.withAppendedId(videos, id);
+            try (Cursor c = getContentResolver().query(candidate,
+                    new String[]{MediaStore.MediaColumns.SIZE}, null, null, null)) {
+                if (c != null && c.moveToFirst() && (size <= 0 || c.getLong(0) == size)) {
+                    return candidate;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (size <= 0) return null;
+        try (Cursor c = getContentResolver().query(videos,
+                new String[]{MediaStore.MediaColumns._ID},
+                MediaStore.MediaColumns.SIZE + "=?",
+                new String[]{String.valueOf(size)}, null)) {
+            if (c != null && c.getCount() == 1 && c.moveToFirst()) {
+                return ContentUris.withAppendedId(videos, c.getLong(0));
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private String queryDisplayName(Uri uri) {
+        try (Cursor c = getContentResolver().query(uri,
+                new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) return c.getString(0);
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /** Remembers the original's volume, folder and base name for the move step. */
+    private void captureOriginalLocation(Uri mediaUri) {
+        replaceVolume = null;
+        replaceRelPath = null;
+        replaceBaseName = null;
+        try (Cursor c = getContentResolver().query(mediaUri, new String[]{
+                MediaStore.MediaColumns.VOLUME_NAME,
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                MediaStore.MediaColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                replaceVolume = c.getString(0);
+                replaceRelPath = c.getString(1);
+                String name = c.getString(2);
+                if (name != null) {
+                    int dot = name.lastIndexOf('.');
+                    replaceBaseName = dot > 0 ? name.substring(0, dot) : name;
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w(TAG_REPLACE, "captureOriginalLocation failed", e);
+        }
+    }
+
+    private void onOriginalDeleted() {
+        resultInputUri = null;
+        btnReplace.setVisibility(View.GONE);
+        if (replaceVolume != null && replaceRelPath != null && replaceBaseName != null
+                && !resultOutputs.isEmpty()) {
+            moveOutputToOriginalLocation();
+        } else {
+            // Location unknown (e.g. deleted through a non-media document
+            // provider): the compressed file stays where it was saved.
+            Toast.makeText(this, R.string.replace_move_failed, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * Moves the compressed file into the deleted original's folder under the
+     * original's (base) name. RELATIVE_PATH updates cannot cross volumes (the
+     * original may be on the SD card while we saved to internal Movies/), so
+     * this copies into a fresh MediaStore item on the target volume and then
+     * deletes the app-owned source item. Runs on a background thread.
+     */
+    private void moveOutputToOriginalLocation() {
+        final Uri source = resultOutputs.get(0);
+        final boolean audioOnly = resultAudioOnly;
+        final String volume = replaceVolume;
+        final String relPath = replaceRelPath;
+        final String newName = replaceBaseName + (audioOnly ? ".m4a" : ".mp4");
+        new Thread(() -> {
+            Uri dest = null;
+            try {
+                android.content.ContentValues values = new android.content.ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, newName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, audioOnly ? "audio/mp4" : "video/mp4");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, relPath);
+                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                Uri collection = audioOnly
+                        ? MediaStore.Audio.Media.getContentUri(volume)
+                        : MediaStore.Video.Media.getContentUri(volume);
+                dest = getContentResolver().insert(collection, values);
+                if (dest == null) throw new java.io.IOException("insert failed");
+
+                try (java.io.InputStream in = getContentResolver().openInputStream(source);
+                     java.io.OutputStream out = getContentResolver().openOutputStream(dest, "w")) {
+                    if (in == null || out == null) throw new java.io.IOException("open streams failed");
+                    byte[] buf = new byte[1 << 20];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+
+                android.content.ContentValues done = new android.content.ContentValues();
+                done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                getContentResolver().update(dest, done, null, null);
+
+                getContentResolver().delete(source, null, null); // app-owned: no consent needed
+
+                final Uri finalDest = dest;
+                runOnUiThread(() -> {
+                    if (!resultOutputs.isEmpty()) resultOutputs.set(0, finalDest);
+                    Toast.makeText(this, R.string.replace_done, Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception e) {
+                android.util.Log.w(TAG_REPLACE, "move to original location failed", e);
+                if (dest != null) {
+                    try {
+                        getContentResolver().delete(dest, null, null);
+                    } catch (Exception ignored) {
+                    }
+                }
+                runOnUiThread(() -> Toast.makeText(this,
+                        R.string.replace_move_failed, Toast.LENGTH_LONG).show());
+            }
+        }, "replace-move").start();
+    }
+
+    private void toastReplaceFailed() {
+        Toast.makeText(this, R.string.replace_failed, Toast.LENGTH_LONG).show();
     }
 
     // Throttled sample for the running state (called per progress snapshot).

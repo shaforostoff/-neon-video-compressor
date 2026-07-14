@@ -33,6 +33,14 @@
     <string name="stop_save_partial">Зберегти частину</string>
     <string name="stop_discard">Відкинути</string>
     <string name="stop_keep">Продовжити</string>
+    <string name="replace_original">Замінити оригінал</string>
+    <string name="replace_confirm_title">Замінити оригінал?</string>
+    <string name="replace_confirm_message">%1$s буде безповоротно видалено. Стиснута версія залишиться у вашій бібліотеці. Цю дію не можна скасувати.</string>
+    <string name="replace_this_video">Оригінальне відео</string>
+    <string name="replace_confirm_delete">Видалити оригінал</string>
+    <string name="replace_done">Оригінал замінено</string>
+    <string name="replace_move_failed">Оригінал видалено, але стиснуте відео залишилося там, куди було збережено</string>
+    <string name="replace_failed">Не вдалося видалити оригінал</string>
     <string name="done">Готово</string>
 
     <string name="about">Про застосунок</string>

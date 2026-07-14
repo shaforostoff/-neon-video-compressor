@@ -33,6 +33,14 @@
     <string name="stop_save_partial">Salva parte</string>
     <string name="stop_discard">Scarta</string>
     <string name="stop_keep">Continua</string>
+    <string name="replace_original">Sostituisci originale</string>
+    <string name="replace_confirm_title">Sostituire l\'originale?</string>
+    <string name="replace_confirm_message">%1$s verrà eliminato definitivamente. La versione compressa resta nella tua libreria. L\'operazione non può essere annullata.</string>
+    <string name="replace_this_video">Il video originale</string>
+    <string name="replace_confirm_delete">Elimina originale</string>
+    <string name="replace_done">Originale sostituito</string>
+    <string name="replace_move_failed">Originale eliminato, ma il video compresso è rimasto nella posizione in cui era salvato</string>
+    <string name="replace_failed">Impossibile eliminare l\'originale</string>
     <string name="done">Fatto</string>
 
     <string name="about">Informazioni</string>

@@ -33,6 +33,14 @@
     <string name="stop_save_partial">Guardar parte</string>
     <string name="stop_discard">Descartar</string>
     <string name="stop_keep">Continuar</string>
+    <string name="replace_original">Reemplazar original</string>
+    <string name="replace_confirm_title">¿Reemplazar el original?</string>
+    <string name="replace_confirm_message">%1$s se eliminará de forma permanente. La versión comprimida se conserva en tu biblioteca. Esto no se puede deshacer.</string>
+    <string name="replace_this_video">El vídeo original</string>
+    <string name="replace_confirm_delete">Eliminar original</string>
+    <string name="replace_done">Original reemplazado</string>
+    <string name="replace_move_failed">Original eliminado, pero el vídeo comprimido se quedó en su ubicación guardada</string>
+    <string name="replace_failed">No se pudo eliminar el original</string>
     <string name="done">Hecho</string>
 
     <string name="about">Acerca de</string>

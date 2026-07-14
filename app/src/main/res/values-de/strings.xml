@@ -33,6 +33,14 @@
     <string name="stop_save_partial">Teil speichern</string>
     <string name="stop_discard">Verwerfen</string>
     <string name="stop_keep">Weitermachen</string>
+    <string name="replace_original">Original ersetzen</string>
+    <string name="replace_confirm_title">Original ersetzen?</string>
+    <string name="replace_confirm_message">%1$s wird endgültig gelöscht. Die komprimierte Version bleibt in deiner Mediathek. Das lässt sich nicht rückgängig machen.</string>
+    <string name="replace_this_video">Das Originalvideo</string>
+    <string name="replace_confirm_delete">Original löschen</string>
+    <string name="replace_done">Original ersetzt</string>
+    <string name="replace_move_failed">Original gelöscht, aber das komprimierte Video blieb an seinem Speicherort</string>
+    <string name="replace_failed">Original konnte nicht gelöscht werden</string>
     <string name="done">Fertig</string>
 
     <string name="about">Info</string>
