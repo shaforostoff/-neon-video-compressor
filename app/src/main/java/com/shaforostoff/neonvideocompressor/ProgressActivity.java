@@ -37,6 +37,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.shaforostoff.neonvideocompressor.engine.ConversionJob;
 import com.shaforostoff.neonvideocompressor.service.ConversionService;
+import com.shaforostoff.neonvideocompressor.service.ResultStore;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -128,6 +129,9 @@ public class ProgressActivity extends AppCompatActivity {
     private final Runnable bindFallback = () -> {
         if (bound || finishedState) return;
         ConversionService.Snapshot t = ConversionService.getLastTerminal();
+        // The in-memory terminal snapshot is gone if the process was killed after
+        // finishing; fall back to the durable copy so Open/Share/Replace still work.
+        if (t == null) t = ResultStore.load(this);
         if (t != null) render(t);
     };
 
@@ -328,6 +332,9 @@ public class ProgressActivity extends AppCompatActivity {
                 break;
             case DONE:
                 finishedState = true;
+                // The user is now looking at the finished screen — mark the durable
+                // result seen so it is not auto-reopened on the next launch.
+                ResultStore.markAcknowledged(this);
                 txtBatch.setVisibility(View.GONE);
                 txtPhase.setText(batch ? R.string.batch_complete : R.string.done);
                 txtTime.setText(s.message != null ? s.message : "");

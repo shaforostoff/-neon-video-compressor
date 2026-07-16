@@ -43,6 +43,14 @@ public final class NativeConverter {
 
     public static native void nativeDestroyControl(long handle);
 
+    /**
+     * Purge retained native heap back to the OS ({@code mallopt(M_PURGE)}). Call
+     * after an encode: the x265/FFmpeg frame pools have been freed but the
+     * allocator holds the pages, leaving the process bloated and an easy target
+     * for the low-memory killer while it sits cached.
+     */
+    public static native void nativeTrimMemory();
+
     // --- conversion passes -------------------------------------------------
 
     /**

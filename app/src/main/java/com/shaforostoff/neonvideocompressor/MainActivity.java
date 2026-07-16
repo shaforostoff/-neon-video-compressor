@@ -36,6 +36,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.shaforostoff.neonvideocompressor.engine.Options;
 import com.shaforostoff.neonvideocompressor.engine.SourceMetadata;
 import com.shaforostoff.neonvideocompressor.service.ConversionService;
+import com.shaforostoff.neonvideocompressor.service.ResultStore;
 
 import java.util.Locale;
 
@@ -174,6 +175,16 @@ public class MainActivity extends AppCompatActivity {
 
         // Videos "sent"/"shared" to us from another app (e.g. the Photos share sheet).
         handleShareIntent(getIntent());
+
+        // If a previous conversion finished but the process was killed before the
+        // user could act on it (e.g. a big encode left the app bloated and the OS
+        // reaped it while cached), jump straight to that finished screen so Open /
+        // Share / Replace are reachable. Only on a genuine cold launch, and never
+        // when a share brought us here with a fresh selection to convert.
+        if (savedInstanceState == null && selectedUris.isEmpty()
+                && ResultStore.hasPending(this) && ResultStore.load(this) != null) {
+            startActivity(new Intent(this, ProgressActivity.class));
+        }
     }
 
     @Override

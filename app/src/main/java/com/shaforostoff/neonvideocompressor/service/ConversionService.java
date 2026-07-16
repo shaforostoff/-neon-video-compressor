@@ -28,6 +28,7 @@ import com.shaforostoff.neonvideocompressor.ProgressActivity;
 import com.shaforostoff.neonvideocompressor.R;
 import com.shaforostoff.neonvideocompressor.engine.ConversionJob;
 import com.shaforostoff.neonvideocompressor.engine.JobControl;
+import com.shaforostoff.neonvideocompressor.engine.NativeConverter;
 import com.shaforostoff.neonvideocompressor.engine.Options;
 import com.shaforostoff.neonvideocompressor.engine.SourceMetadata;
 
@@ -283,6 +284,7 @@ public class ConversionService extends Service implements ConversionJob.Listener
 
         createChannel();
         lastTerminal = null; // a stale result must not shadow this new run
+        ResultStore.clear(this);
         batchCancelled = false;
         batchStopped = false;
         snapshot.status = Status.RUNNING;
@@ -332,6 +334,10 @@ public class ConversionService extends Service implements ConversionJob.Listener
                     c.destroy();
                     if (control == c) control = null;
                 }
+                // The encoder's large frame pools are freed by now; hand the pages
+                // back to the OS so the process isn't left bloated between files
+                // (and after the last one, while it sits cached with the result).
+                NativeConverter.nativeTrimMemory();
             }
         }
         finishBatch(options);
@@ -456,6 +462,12 @@ public class ConversionService extends Service implements ConversionJob.Listener
         snapshot.outputs.addAll(collectedOutputs);
 
         lastTerminal = snapshot;
+        // Durable copy so the finished screen (Open/Share/Replace) survives the
+        // process being killed before the user acts. Only DONE runs carry an
+        // output worth acting on; save() itself no-ops when there is none.
+        if (finalStatus == Status.DONE) {
+            ResultStore.save(this, snapshot);
+        }
         pushUpdate(true);
         releaseWakeLock();
         stopForeground(STOP_FOREGROUND_REMOVE);

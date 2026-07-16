@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <malloc.h>
 #include <math.h>
 #include <errno.h>
 #include <unistd.h>
@@ -284,6 +285,17 @@ Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeDestroyCo
     pthread_mutex_destroy(&c->mutex);
     pthread_cond_destroy(&c->cond);
     free(c);
+}
+
+// Return retained heap back to the OS. libx265/FFmpeg allocate hundreds of MB
+// of frame pools during an encode; after freeing them the allocator (bionic's
+// scudo) keeps the pages, so the process stays bloated and cached — a prime
+// low-memory-killer target the moment the encode finishes. Purging drops the
+// process RSS so it survives longer while the user acts on the result.
+JNIEXPORT void JNICALL
+Java_com_shaforostoff_neonvideocompressor_engine_NativeConverter_nativeTrimMemory(
+        JNIEnv *env, jclass clazz) {
+    mallopt(M_PURGE, 0);
 }
 
 // ---------------------------------------------------------------------------
