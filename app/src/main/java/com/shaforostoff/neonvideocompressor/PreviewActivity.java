@@ -22,6 +22,7 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.shaforostoff.neonvideocompressor.engine.HardwareVideoEncoder;
 import com.shaforostoff.neonvideocompressor.engine.JobControl;
 import com.shaforostoff.neonvideocompressor.engine.NativeConverter;
 import com.shaforostoff.neonvideocompressor.engine.Options;
@@ -235,13 +236,24 @@ public class PreviewActivity extends AppCompatActivity {
             vidH = (int) probe[3];
             rotationDeg = ((int) probe[4] % 360 + 360) % 360;
 
-            int r1 = NativeConverter.nativeTranscodeVideo(
-                    fd, encodedFile.getAbsolutePath(), options.crf, options.preset,
-                    c.nativeHandle(), PREVIEW_US,
-                    processedUs -> {
-                        int pct = (int) Math.min(100, processedUs * 100 / PREVIEW_US);
-                        main.post(() -> loadingBar.setProgress(pct));
-                    });
+            NativeConverter.ProgressCallback previewProgress = processedUs -> {
+                int pct = (int) Math.min(100, processedUs * 100 / PREVIEW_US);
+                main.post(() -> loadingBar.setProgress(pct));
+            };
+            int r1;
+            if (options.encodesVideoHardware()) {
+                int hw = HardwareVideoEncoder.encodeToPath(
+                        encPfd.getFileDescriptor(), encodedFile.getAbsolutePath(),
+                        options, c, PREVIEW_US, previewProgress::onProgress);
+                // A partial (stop-truncated) preview is still a valid clip to show.
+                r1 = (hw == HardwareVideoEncoder.RESULT_OK
+                        || hw == HardwareVideoEncoder.RESULT_STOPPED)
+                        ? NativeConverter.RET_OK : NativeConverter.RET_ERROR;
+            } else {
+                r1 = NativeConverter.nativeTranscodeVideo(
+                        fd, encodedFile.getAbsolutePath(), options.crf, options.preset,
+                        c.nativeHandle(), PREVIEW_US, previewProgress);
+            }
             if (c.cancelled || destroyed) return;
             if (r1 != NativeConverter.RET_OK) {
                 fail();

@@ -1,6 +1,6 @@
 <resources>
     <string-array name="video_modes">
-        <item>Encode HEVC (H.265)</item>
+        <item>Encode HEVC (x265)</item>
         <item>Copy (no re-encode)</item>
         <item>Remove</item>
     </string-array>

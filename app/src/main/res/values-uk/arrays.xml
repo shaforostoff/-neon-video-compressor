@@ -1,6 +1,6 @@
 <resources>
     <string-array name="video_modes">
-        <item>Кодувати HEVC (H.265)</item>
+        <item>Кодувати HEVC (x265)</item>
         <item>Копіювати (без перекодування)</item>
         <item>Видалити</item>
     </string-array>

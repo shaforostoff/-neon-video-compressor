@@ -10,6 +10,14 @@
     <string name="preset">Preset</string>
     <string name="audio_bitrate">Audio bitrate</string>
     <string name="crf_label">Quality (CRF): %1$d</string>
+    <!-- %1$s is the chip vendor, e.g. "Qualcomm" or "MediaTek". -->
+    <string name="encode_hevc_hw">Encode HEVC (%1$s)</string>
+    <!-- Constant-quality mode: %1$d is the quality 0–100. -->
+    <string name="hw_quality_label">Quality: %1$d%% (CQ)</string>
+    <!-- Bitrate target, %1$s is the value in Mbps (e.g. "1.5"). -->
+    <string name="hw_bitrate_label">Bitrate: %1$s Mbps</string>
+    <string name="mode_cbr">CBR</string>
+    <string name="mode_vbr">VBR</string>
     <string name="convert">Convert</string>
     <string name="preview">Preview (first 5s)</string>
     <string name="preview_needs_encode">Preview is only available when encoding video</string>
@@ -66,6 +74,12 @@
     <string name="avg_speed_format">Avg speed: %1$.2f× realtime</string>
     <string name="ram_format">RAM: %1$d MB</string>
     <string name="ram_unknown">RAM: —</string>
+    <!-- Completion screen: original -> new bitrate per track. %1$s original, %2$s new. -->
+    <string name="result_bitrate_video">Video: %1$s → %2$s</string>
+    <string name="result_bitrate_audio">Audio: %1$s → %2$s</string>
+    <string name="bitrate_mbps">%1$s Mbps</string>
+    <string name="bitrate_kbps">%1$d kbps</string>
+    <string name="bitrate_none">—</string>
     <string name="no_app_to_open">No app to open this file</string>
     <string name="remove_both_error">Can\'t remove both video and audio</string>
 

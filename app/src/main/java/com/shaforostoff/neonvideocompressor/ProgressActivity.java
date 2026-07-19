@@ -7,7 +7,10 @@ import android.content.ComponentName;
 import android.content.ContentUris;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.Context;
 import android.database.Cursor;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -36,16 +39,18 @@ import androidx.core.view.WindowInsetsCompat;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.shaforostoff.neonvideocompressor.engine.ConversionJob;
+import com.shaforostoff.neonvideocompressor.engine.SourceMetadata;
 import com.shaforostoff.neonvideocompressor.service.ConversionService;
 import com.shaforostoff.neonvideocompressor.service.ResultStore;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Locale;
 
 public class ProgressActivity extends AppCompatActivity {
 
-    private TextView txtBatch, txtPhase, txtPercent, txtTime, txtSpeed, txtSize, txtRam;
+    private TextView txtBatch, txtPhase, txtPercent, txtTime, txtSpeed, txtSize, txtRam, txtBitrates;
     private ProgressBar progressBar;
     private MaterialButton btnPauseResume, btnCancel, btnOpen, btnShare, btnReplace;
     private View rowResultActions;
@@ -175,6 +180,7 @@ public class ProgressActivity extends AppCompatActivity {
         txtSpeed = findViewById(R.id.txtSpeed);
         txtSize = findViewById(R.id.txtSize);
         txtRam = findViewById(R.id.txtRam);
+        txtBitrates = findViewById(R.id.txtBitrates);
         progressBar = findViewById(R.id.progressBar);
         btnPauseResume = findViewById(R.id.btnPauseResume);
         btnCancel = findViewById(R.id.btnCancel);
@@ -225,6 +231,7 @@ public class ProgressActivity extends AppCompatActivity {
                 btnCancel.setText(R.string.close);
                 rowResultActions.setVisibility(resultOutputs.isEmpty() ? View.GONE : View.VISIBLE);
                 btnReplace.setVisibility(canReplaceOriginal() ? View.VISIBLE : View.GONE);
+                showBitrateComparison(); // recompute after rotation (not saved in state)
             }
         }
     }
@@ -323,6 +330,7 @@ public class ProgressActivity extends AppCompatActivity {
                 btnCancel.setText(R.string.stop);
                 rowResultActions.setVisibility(View.GONE);
                 btnReplace.setVisibility(View.GONE);
+                txtBitrates.setVisibility(View.GONE);
                 if (paused) {
                     startRamTicker();
                 } else {
@@ -354,6 +362,7 @@ public class ProgressActivity extends AppCompatActivity {
                 resultPartial = s.partial;
                 rowResultActions.setVisibility(resultOutputs.isEmpty() ? View.GONE : View.VISIBLE);
                 btnReplace.setVisibility(canReplaceOriginal() ? View.VISIBLE : View.GONE);
+                showBitrateComparison();
                 Toast.makeText(this, s.message != null ? s.message : savedTo,
                         Toast.LENGTH_LONG).show();
                 break;
@@ -679,5 +688,102 @@ public class ProgressActivity extends AppCompatActivity {
     private static String formatTime(long us) {
         long totalSec = us / 1_000_000L;
         return String.format(Locale.US, "%02d:%02d", totalSec / 60, totalSec % 60);
+    }
+
+    // --- Original -> new bitrate comparison (single-file completion) ----------
+
+    /**
+     * Measures the source and output per-track bitrates off the main thread and
+     * shows an "original → new" line for video and audio. Only for single-file
+     * conversions (a batch has no single source to compare against).
+     */
+    private void showBitrateComparison() {
+        txtBitrates.setVisibility(View.GONE);
+        final Uri input = resultInputUri;
+        final Uri output = resultOutputs.isEmpty() ? null : resultOutputs.get(0);
+        if (input == null || output == null) return;
+        final Context ctx = getApplicationContext();
+        new Thread(() -> {
+            long[] src = measureBitrates(ctx, input);
+            long[] out = measureBitrates(ctx, output);
+            String video = bitrateLine(R.string.result_bitrate_video, src[0], out[0]);
+            String audio = bitrateLine(R.string.result_bitrate_audio, src[1], out[1]);
+            final String text = video != null && audio != null ? video + "\n" + audio
+                    : video != null ? video : audio;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || !finishedState || text == null) return;
+                txtBitrates.setText(text);
+                txtBitrates.setVisibility(View.VISIBLE);
+            });
+        }, "bitrate-measure").start();
+    }
+
+    /** @return the formatted "Video/Audio: orig → new" line, or null if that track is absent in both. */
+    private String bitrateLine(int fmtRes, long srcBps, long outBps) {
+        if (srcBps < 0 && outBps < 0) return null;
+        return getString(fmtRes, formatBitrate(srcBps), formatBitrate(outBps));
+    }
+
+    private String formatBitrate(long bps) {
+        if (bps < 0) return getString(R.string.bitrate_none);
+        if (bps >= 1_000_000) {
+            return getString(R.string.bitrate_mbps,
+                    String.format(Locale.US, "%.1f", bps / 1_000_000.0));
+        }
+        return getString(R.string.bitrate_kbps, Math.round(bps / 1000.0));
+    }
+
+    /**
+     * @return {@code {videoBps, audioBps}}; -1 for an absent track. The audio rate
+     * is exact (its samples are summed — they're tiny); the video rate is the
+     * container bitrate (size/duration) minus audio, which avoids reading the
+     * large video track.
+     */
+    private static long[] measureBitrates(Context ctx, Uri uri) {
+        long videoBps = -1, audioBps = -1;
+        MediaExtractor ex = new MediaExtractor();
+        try {
+            ex.setDataSource(ctx, uri, null);
+            int audioTrack = -1;
+            boolean hasVideo = false;
+            long durUs = 0;
+            for (int i = 0; i < ex.getTrackCount(); i++) {
+                MediaFormat f = ex.getTrackFormat(i);
+                String mime = f.getString(MediaFormat.KEY_MIME);
+                if (mime == null) continue;
+                if (f.containsKey(MediaFormat.KEY_DURATION)) {
+                    durUs = Math.max(durUs, f.getLong(MediaFormat.KEY_DURATION));
+                }
+                if (mime.startsWith("video/")) hasVideo = true;
+                else if (mime.startsWith("audio/") && audioTrack < 0) audioTrack = i;
+            }
+            double durSec = durUs / 1_000_000.0;
+            long sizeBytes = SourceMetadata.querySize(ctx, uri);
+            long overallBps = durSec > 0 && sizeBytes > 0 ? (long) (sizeBytes * 8 / durSec) : 0;
+
+            if (audioTrack >= 0 && durSec > 0) {
+                ex.selectTrack(audioTrack);
+                long audioBytes = 0;
+                ByteBuffer buf = ByteBuffer.allocate(256 * 1024);
+                int n;
+                while ((n = ex.readSampleData(buf, 0)) >= 0) {
+                    audioBytes += n;
+                    if (!ex.advance()) break;
+                }
+                audioBps = (long) (audioBytes * 8 / durSec);
+            }
+            if (hasVideo) {
+                long a = audioBps > 0 ? audioBps : 0;
+                videoBps = overallBps > 0 ? Math.max(0, overallBps - a) : 0;
+            }
+        } catch (Exception ignored) {
+            // Unreadable / unsupported source — leave both as -1 (line is hidden).
+        } finally {
+            try {
+                ex.release();
+            } catch (Exception ignored) {
+            }
+        }
+        return new long[]{videoBps, audioBps};
     }
 }

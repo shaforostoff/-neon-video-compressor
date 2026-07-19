@@ -8,9 +8,20 @@ import java.io.Serializable;
 public class Options implements Serializable {
 
     public enum VideoMode {
+        /** Software HEVC via the bundled libx265 (CRF + preset). */
         ENCODE_HEVC,
+        /** Hardware HEVC via the platform MediaCodec (CQ or VBR, no preset). */
+        ENCODE_HEVC_HW,
         COPY,
         REMOVE
+    }
+
+    /** Rate-control mode for the hardware encoder when CQ isn't available. */
+    public enum HwBitrateMode {
+        /** Constant bitrate — holds the target closely. */
+        CBR,
+        /** Variable bitrate — treats the target as an average, may overshoot. */
+        VBR
     }
 
     public enum AudioMode {
@@ -25,11 +36,36 @@ public class Options implements Serializable {
     public int crf = 30;
     public String preset = "slow";
 
+    /**
+     * CQ quality for the hardware encoder, 0..100 (higher = better), mapped onto
+     * the encoder's own quality range. Used only when the encoder supports CQ.
+     */
+    public int hwQuality = 60;
+
+    /**
+     * Target bitrate (bits/sec) for the hardware encoder when it has no CQ
+     * support. 0 falls back to a resolution-derived default.
+     */
+    public int hwBitrate = 8_000_000;
+
+    /** Rate control for the hardware bitrate path (ignored when the encoder is CQ). */
+    public HwBitrateMode hwBitrateMode = HwBitrateMode.CBR;
+
     public AudioMode audioMode = AudioMode.ENCODE_AAC_LC;
     public int audioBitrate = 40_000; // bits per second
 
     public boolean encodesVideo() {
+        return videoMode == VideoMode.ENCODE_HEVC || videoMode == VideoMode.ENCODE_HEVC_HW;
+    }
+
+    /** Software (libx265) HEVC encode — honours {@link #crf} and {@link #preset}. */
+    public boolean encodesVideoSoftware() {
         return videoMode == VideoMode.ENCODE_HEVC;
+    }
+
+    /** Hardware (MediaCodec) HEVC encode — honours {@link #hwQuality}. */
+    public boolean encodesVideoHardware() {
+        return videoMode == VideoMode.ENCODE_HEVC_HW;
     }
 
     public boolean copiesVideo() {

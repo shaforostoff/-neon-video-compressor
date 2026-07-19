@@ -166,7 +166,34 @@ public class ConversionJob {
                 if (outPfd == null) throw new IOException(context.getString(R.string.error_open_output));
 
                 boolean partial = false;
-                if (encodeVideo) {
+                if (encodeVideo && options.encodesVideoHardware()) {
+                    // --- Hardware video pass: decode -> HW HEVC encode -> mux (with
+                    // the audio) straight into the destination item's "rw" fd.
+                    setPhase(Phase.VIDEO);
+                    liveOutPfd = outPfd;
+                    int r;
+                    try {
+                        r = HardwareVideoEncoder.encode(
+                                inputPfd.getFileDescriptor(),
+                                encodeAudio ? audioTemp.getAbsolutePath() : null,
+                                copyAudio && audioPfd != null ? audioPfd.getFileDescriptor() : null,
+                                outPfd.getFileDescriptor(),
+                                options, control, 0L,
+                                processedUs -> report(Phase.VIDEO, processedUs));
+                    } finally {
+                        liveOutPfd = null;
+                    }
+                    if (r == HardwareVideoEncoder.RESULT_CANCELLED || control.cancelled) {
+                        listener.onCancelled();
+                        return; // finally deletes the still-pending item
+                    }
+                    if (r != HardwareVideoEncoder.RESULT_OK
+                            && r != HardwareVideoEncoder.RESULT_STOPPED) {
+                        listener.onError(context.getString(R.string.error_video_encode_failed, r));
+                        return;
+                    }
+                    partial = r == HardwareVideoEncoder.RESULT_STOPPED;
+                } else if (encodeVideo) {
                     // --- Video pass: encode x265 and mux (with the audio) straight
                     // into the destination item's "rw" fd — no video temp file.
                     setPhase(Phase.VIDEO);

@@ -12,6 +12,7 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -33,6 +34,7 @@ import androidx.core.content.ContextCompat;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.shaforostoff.neonvideocompressor.engine.HardwareEncoderInfo;
 import com.shaforostoff.neonvideocompressor.engine.Options;
 import com.shaforostoff.neonvideocompressor.engine.SourceMetadata;
 import com.shaforostoff.neonvideocompressor.service.ConversionService;
@@ -45,8 +47,22 @@ public class MainActivity extends AppCompatActivity {
     private static final String STATE_URIS = "selected_uris";
 
     private static final String PREFS = "settings";
-    private static final String KEY_VIDEO_MODE = "video_mode";
+    // Stores the VideoMode enum name. A new key (vs. the old int "video_mode") so
+    // an existing install's int value can't be read back as a String and crash.
+    private static final String KEY_VIDEO_MODE = "video_mode_enum";
     private static final String KEY_CRF = "crf";
+    private static final String KEY_HW_QUALITY = "hw_quality";
+    private static final String KEY_HW_BITRATE = "hw_bitrate_bps"; // legacy (pre-split) default
+    private static final String KEY_HW_CBR_BITRATE = "hw_cbr_bitrate_bps";
+    private static final String KEY_HW_VBR_BITRATE = "hw_vbr_bitrate_bps";
+    private static final String KEY_HW_VBR = "hw_vbr";
+
+    // Hardware bitrate slider works in 0.1 Mbps steps (so 1.5 Mbps etc. are
+    // selectable). The maximum is capped at the source file's own bitrate — going
+    // above it can't add quality — falling back to this ceiling when unknown.
+    private static final int HW_BITRATE_STEP_BPS = 100_000;       // 0.1 Mbps
+    private static final int HW_BITRATE_MIN_BPS = 100_000;        // 0.1 Mbps
+    private static final int HW_BITRATE_FALLBACK_MAX_BPS = 50_000_000; // 50 Mbps
     private static final String KEY_PRESET = "preset";
     private static final String KEY_AUDIO_MODE = "audio_mode";
     private static final String KEY_AUDIO_BITRATE = "audio_bitrate";
@@ -61,10 +77,31 @@ public class MainActivity extends AppCompatActivity {
     private TextView txtFile, txtCrf;
     private SeekBar seekCrf;
     private Spinner spVideoMode, spPreset, spAudioMode, spAudioBitrate;
-    private View videoEncodeOptions, audioEncodeOptions;
+    private View videoEncodeOptions, audioEncodeOptions, presetGroup;
     private MaterialButton btnConvert, btnPreview;
 
     private int[] bitrateValues;
+
+    // The video-mode spinner is built at runtime because the hardware-HEVC entry
+    // is only present when a HW encoder exists and its label carries the chip
+    // vendor. This parallel list maps each spinner row to its VideoMode.
+    private final List<Options.VideoMode> videoModes = new ArrayList<>();
+    private HardwareEncoderInfo hwInfo;
+
+    // The single quality SeekBar is shared between the two encode modes, which use
+    // different scales (x265 CRF 0–51, lower = better; hardware quality 0–100,
+    // higher = better). We keep each mode's value here so switching modes restores
+    // the right one rather than reinterpreting the raw slider position.
+    private RadioGroup bitrateModeGroup;
+
+    private int x265Crf;
+    private int hwQuality;        // CQ mode, 0–100
+    private int hwCbrBitrateBps;  // CBR bitrate, bits/sec
+    private int hwVbrBitrateBps;  // VBR bitrate, bits/sec (kept separate from CBR)
+    private boolean hwVbr;        // false = CBR, true = VBR
+    // Bitrate (bits/sec) of the currently selected source, used to cap the slider
+    // (0 = unknown, e.g. nothing selected yet -> fall back to the fixed ceiling).
+    private int sourceBitrateBps;
 
     // Folder/document browser (any provider, any folder) — reliable for videos
     // tucked away outside the media gallery, but many providers don't actually
@@ -117,6 +154,8 @@ public class MainActivity extends AppCompatActivity {
         spAudioBitrate = findViewById(R.id.spAudioBitrate);
         videoEncodeOptions = findViewById(R.id.videoEncodeOptions);
         audioEncodeOptions = findViewById(R.id.audioEncodeOptions);
+        presetGroup = findViewById(R.id.presetGroup);
+        bitrateModeGroup = findViewById(R.id.bitrateModeGroup);
         btnConvert = findViewById(R.id.btnConvert);
         btnPreview = findViewById(R.id.btnPreview);
 
@@ -125,36 +164,55 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
 
         // Restore the last-used encoding settings (defaults on first launch).
-        setupSpinner(spVideoMode, R.array.video_modes, prefs.getInt(KEY_VIDEO_MODE, 0));
+        x265Crf = prefs.getInt(KEY_CRF, 30);
+        hwQuality = prefs.getInt(KEY_HW_QUALITY, 60);
+        // CBR and VBR each remember their own bitrate; seed both from the legacy
+        // shared value so an existing install keeps its last setting.
+        int legacyBitrate = prefs.getInt(KEY_HW_BITRATE, 8_000_000);
+        hwCbrBitrateBps = prefs.getInt(KEY_HW_CBR_BITRATE, legacyBitrate);
+        hwVbrBitrateBps = prefs.getInt(KEY_HW_VBR_BITRATE, legacyBitrate);
+        hwVbr = prefs.getBoolean(KEY_HW_VBR, false);
+        bitrateModeGroup.check(hwVbr ? R.id.rbVbr : R.id.rbCbr);
+        setupVideoModeSpinner();
         setupSpinner(spPreset, R.array.presets, prefs.getInt(KEY_PRESET, 6 /* slow */));
         setupSpinner(spAudioMode, R.array.audio_modes, prefs.getInt(KEY_AUDIO_MODE, 0));
         setupSpinner(spAudioBitrate, R.array.audio_bitrate_labels,
                 prefs.getInt(KEY_AUDIO_BITRATE, 2 /* 40 kbps */));
 
-        // Video encode options (CRF/preset) are relevant only for "Encode HEVC" (pos 0).
-        spVideoMode.setOnItemSelectedListener(new SimpleSelected(pos ->
-                videoEncodeOptions.setVisibility(pos == 0 ? View.VISIBLE : View.GONE)));
+        // Show the video encode controls (and pick the right quality scale) for the
+        // selected mode; only the encode modes have any.
+        spVideoMode.setOnItemSelectedListener(new SimpleSelected(this::applyVideoModeUi));
         // Audio encode options (bitrate) are relevant only for the encode modes (pos 0/1/2).
         spAudioMode.setOnItemSelectedListener(new SimpleSelected(pos ->
                 audioEncodeOptions.setVisibility(pos <= 2 ? View.VISIBLE : View.GONE)));
         // Apply the restored selections' visibility immediately (a listener added
         // after setSelection doesn't get called for the already-set value).
-        videoEncodeOptions.setVisibility(
-                spVideoMode.getSelectedItemPosition() == 0 ? View.VISIBLE : View.GONE);
+        applyVideoModeUi(spVideoMode.getSelectedItemPosition());
         audioEncodeOptions.setVisibility(
                 spAudioMode.getSelectedItemPosition() <= 2 ? View.VISIBLE : View.GONE);
 
         seekCrf.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
-                txtCrf.setText(String.format(Locale.US, getString(R.string.crf_label), p));
+                // Remember the value under whichever mode's scale is active.
+                if (currentVideoMode() == Options.VideoMode.ENCODE_HEVC) {
+                    x265Crf = p;
+                } else if (currentVideoMode() == Options.VideoMode.ENCODE_HEVC_HW) {
+                    if (hwUsesCq()) hwQuality = p;
+                    else setActiveHwBitrate(Math.max(HW_BITRATE_MIN_BPS, p * HW_BITRATE_STEP_BPS));
+                }
+                updateQualityLabel();
             }
 
             @Override public void onStartTrackingTouch(SeekBar s) {}
             @Override public void onStopTrackingTouch(SeekBar s) {}
         });
-        seekCrf.setProgress(prefs.getInt(KEY_CRF, seekCrf.getProgress()));
-        txtCrf.setText(String.format(Locale.US, getString(R.string.crf_label), seekCrf.getProgress()));
+
+        bitrateModeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            hwVbr = checkedId == R.id.rbVbr;
+            // Switch the slider to the newly-selected mode's own remembered bitrate.
+            applyVideoModeUi(spVideoMode.getSelectedItemPosition());
+        });
 
         ((MaterialButton) findViewById(R.id.btnSelectVideos)).setOnClickListener(v -> onSelectVideosClicked());
         ((MaterialButton) findViewById(R.id.btnSelectFiles)).setOnClickListener(v ->
@@ -226,8 +284,12 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
         // Persist the encoding settings so they carry over to the next launch.
         prefs.edit()
-                .putInt(KEY_VIDEO_MODE, spVideoMode.getSelectedItemPosition())
-                .putInt(KEY_CRF, seekCrf.getProgress())
+                .putString(KEY_VIDEO_MODE, currentVideoMode().name())
+                .putInt(KEY_CRF, x265Crf)
+                .putInt(KEY_HW_QUALITY, hwQuality)
+                .putInt(KEY_HW_CBR_BITRATE, hwCbrBitrateBps)
+                .putInt(KEY_HW_VBR_BITRATE, hwVbrBitrateBps)
+                .putBoolean(KEY_HW_VBR, hwVbr)
                 .putInt(KEY_PRESET, spPreset.getSelectedItemPosition())
                 .putInt(KEY_AUDIO_MODE, spAudioMode.getSelectedItemPosition())
                 .putInt(KEY_AUDIO_BITRATE, spAudioBitrate.getSelectedItemPosition())
@@ -283,7 +345,26 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {
             }
         }
+        // Cap the hardware bitrate slider at the source's own bitrate (using the
+        // first video for a batch). Re-apply if that control is on screen.
+        sourceBitrateBps = probeBitrate(selectedUris.isEmpty() ? null : selectedUris.get(0));
+        applyVideoModeUi(spVideoMode.getSelectedItemPosition());
         renderSelection();
+    }
+
+    /** Overall container bitrate (bits/sec) of a source, or 0 if unknown. */
+    private int probeBitrate(Uri uri) {
+        if (uri == null) return 0;
+        MediaMetadataRetriever r = new MediaMetadataRetriever();
+        try {
+            r.setDataSource(this, uri);
+            String b = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE);
+            return b != null ? Integer.parseInt(b) : 0;
+        } catch (Exception e) {
+            return 0;
+        } finally {
+            try { r.release(); } catch (Exception ignored) {}
+        }
     }
 
     /** Updates the file label and button state to reflect {@link #selectedUris}. */
@@ -353,13 +434,12 @@ public class MainActivity extends AppCompatActivity {
     /** Reads the current spinner/seekbar selections into an {@link Options}. */
     private Options buildOptions() {
         Options o = new Options();
-        switch (spVideoMode.getSelectedItemPosition()) {
-            case 0: o.videoMode = Options.VideoMode.ENCODE_HEVC; break;
-            case 1: o.videoMode = Options.VideoMode.COPY; break;
-            default: o.videoMode = Options.VideoMode.REMOVE; break;
-        }
-        o.crf = seekCrf.getProgress();
+        o.videoMode = currentVideoMode();
+        o.crf = x265Crf;
         o.preset = (String) spPreset.getSelectedItem();
+        o.hwQuality = hwQuality;
+        o.hwBitrate = Math.max(HW_BITRATE_MIN_BPS, activeHwBitrate());
+        o.hwBitrateMode = hwVbr ? Options.HwBitrateMode.VBR : Options.HwBitrateMode.CBR;
         switch (spAudioMode.getSelectedItemPosition()) {
             case 0: o.audioMode = Options.AudioMode.ENCODE_AAC_LC; break;
             case 1: o.audioMode = Options.AudioMode.ENCODE_AAC_HE; break;
@@ -432,6 +512,123 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         PreviewActivity.start(this, selectedUris.get(0), o);
+    }
+
+    /**
+     * Builds the video-mode spinner from the localized base modes (x265, Copy,
+     * Remove), splicing in a hardware "Encode HEVC (vendor)" row right after the
+     * x265 one when this device has a hardware HEVC encoder. {@link #videoModes}
+     * is kept in lock-step so a spinner position maps back to its VideoMode.
+     */
+    private void setupVideoModeSpinner() {
+        hwInfo = HardwareEncoderInfo.detect();
+        String[] base = getResources().getStringArray(R.array.video_modes); // x265, Copy, Remove
+
+        List<String> labels = new ArrayList<>();
+        videoModes.clear();
+
+        labels.add(base[0]);
+        videoModes.add(Options.VideoMode.ENCODE_HEVC);
+        if (hwInfo != null) {
+            labels.add(getString(R.string.encode_hevc_hw, hwInfo.vendorLabel()));
+            videoModes.add(Options.VideoMode.ENCODE_HEVC_HW);
+        }
+        labels.add(base[1]);
+        videoModes.add(Options.VideoMode.COPY);
+        labels.add(base[2]);
+        videoModes.add(Options.VideoMode.REMOVE);
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spVideoMode.setAdapter(adapter);
+
+        Options.VideoMode saved = parseMode(prefs.getString(KEY_VIDEO_MODE, null));
+        int idx = videoModes.indexOf(saved);
+        spVideoMode.setSelection(idx >= 0 ? idx : 0);
+    }
+
+    private static Options.VideoMode parseMode(String name) {
+        if (name == null) return Options.VideoMode.ENCODE_HEVC;
+        try {
+            return Options.VideoMode.valueOf(name);
+        } catch (IllegalArgumentException e) {
+            return Options.VideoMode.ENCODE_HEVC;
+        }
+    }
+
+    private Options.VideoMode currentVideoMode() {
+        int pos = spVideoMode.getSelectedItemPosition();
+        return pos >= 0 && pos < videoModes.size()
+                ? videoModes.get(pos) : Options.VideoMode.ENCODE_HEVC;
+    }
+
+    /** Shows/hides the encode controls and picks the quality scale for the mode. */
+    private void applyVideoModeUi(int pos) {
+        Options.VideoMode mode = pos >= 0 && pos < videoModes.size()
+                ? videoModes.get(pos) : Options.VideoMode.ENCODE_HEVC;
+        boolean x265 = mode == Options.VideoMode.ENCODE_HEVC;
+        boolean hw = mode == Options.VideoMode.ENCODE_HEVC_HW;
+
+        videoEncodeOptions.setVisibility(x265 || hw ? View.VISIBLE : View.GONE);
+        presetGroup.setVisibility(x265 ? View.VISIBLE : View.GONE); // no preset for HW
+        // The CBR/VBR selector belongs only to the hardware bitrate path.
+        boolean hwBitrate = hw && !hwUsesCq();
+        bitrateModeGroup.setVisibility(hwBitrate ? View.VISIBLE : View.GONE);
+        if (x265) {
+            seekCrf.setMax(51);
+            seekCrf.setProgress(x265Crf);
+        } else if (hw && hwUsesCq()) {
+            seekCrf.setMax(100);
+            seekCrf.setProgress(hwQuality);
+        } else if (hwBitrate) {
+            int maxSteps = bitrateMaxSteps();
+            seekCrf.setMax(maxSteps);
+            int bps = Math.min(activeHwBitrate(), maxSteps * HW_BITRATE_STEP_BPS);
+            setActiveHwBitrate(bps);
+            int steps = Math.max(1, Math.min(maxSteps, bps / HW_BITRATE_STEP_BPS));
+            seekCrf.setProgress(steps);
+        }
+        updateQualityLabel();
+    }
+
+    /** True when the hardware encoder offers constant-quality (CQ); VBR otherwise. */
+    private boolean hwUsesCq() {
+        return hwInfo != null && hwInfo.supportsCq();
+    }
+
+    /** The bitrate value for the currently selected rate-control mode. */
+    private int activeHwBitrate() {
+        return hwVbr ? hwVbrBitrateBps : hwCbrBitrateBps;
+    }
+
+    private void setActiveHwBitrate(int bps) {
+        if (hwVbr) hwVbrBitrateBps = bps;
+        else hwCbrBitrateBps = bps;
+    }
+
+    /** Slider steps for the bitrate mode: source bitrate (or fallback ceiling) in 0.1 Mbps units. */
+    private int bitrateMaxSteps() {
+        int capBps = sourceBitrateBps > 0 ? sourceBitrateBps : HW_BITRATE_FALLBACK_MAX_BPS;
+        return Math.max(1, capBps / HW_BITRATE_STEP_BPS);
+    }
+
+    /** Formats the slider label: CRF for x265, quality% for HW-CQ, Mbps for HW bitrate. */
+    private void updateQualityLabel() {
+        if (currentVideoMode() == Options.VideoMode.ENCODE_HEVC_HW) {
+            if (hwUsesCq()) {
+                txtCrf.setText(String.format(Locale.US,
+                        getString(R.string.hw_quality_label), seekCrf.getProgress()));
+            } else {
+                double mbps = Math.max(1, seekCrf.getProgress()) * HW_BITRATE_STEP_BPS / 1_000_000.0;
+                txtCrf.setText(String.format(Locale.US,
+                        getString(R.string.hw_bitrate_label),
+                        String.format(Locale.US, "%.1f", mbps)));
+            }
+        } else {
+            txtCrf.setText(String.format(Locale.US,
+                    getString(R.string.crf_label), seekCrf.getProgress()));
+        }
     }
 
     private void setupSpinner(Spinner spinner, int arrayRes, int defaultPos) {
